@@ -525,7 +525,7 @@
                   <!-- 2. 橙 -->
                   <button type="button" onclick="setQuickColor('#f97316')" title="橙 (オレンジ)" class="w-6 h-6 rounded-full bg-[#f97316] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
                   <!-- 3. 黄 -->
-                  <button type="button" onclick="setQuickColor('#eab308')" title="黄 (イエロー)" class="w-6 h-6 rounded-full bg-[#eab308] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <button type="button" onclick="setQuickColor('#facc15')" title="黄 (ブライトイエロー)" class="w-6 h-6 rounded-full bg-[#facc15] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
                   <!-- 4. 緑 -->
                   <button type="button" onclick="setQuickColor('#10b981')" title="緑 (ボタニカルグリーン)" class="w-6 h-6 rounded-full bg-[#10b981] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
                   <!-- 5. 水色 -->
@@ -2280,8 +2280,8 @@
         card.innerHTML = `
           <!-- 上部カラーバー: シリーズ名 -->
           <div 
-            class="px-3.5 py-2 flex items-center justify-between text-white font-bold text-xs tracking-wider shadow-2xs" 
-            style="background-color: ${escapeHtml(item.color || '#10b981')};"
+            class="px-3.5 py-2 flex items-center justify-between font-bold text-xs tracking-wider shadow-2xs" 
+            style="background-color: ${escapeHtml(item.color || '#10b981')}; color: ${getContrastTextColor(item.color || '#10b981')};"
           >
             <span class="truncate flex items-center gap-1.5">
               <svg class="w-3.5 h-3.5 opacity-90 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2426,19 +2426,34 @@
     }
 
     /**
+     * 背景色に応じた最適なテキスト色（白 or 濃色）を判定（輝度YIQ計算）
+     * 明るい黄色などの場合は黒文字にして視認性を確保
+     */
+    function getContrastTextColor(hex) {
+      if (!hex) return '#ffffff';
+      const cleanHex = hex.replace('#', '');
+      const r = parseInt(cleanHex.length === 3 ? cleanHex[0] + cleanHex[0] : cleanHex.substr(0, 2), 16) || 0;
+      const g = parseInt(cleanHex.length === 3 ? cleanHex[1] + cleanHex[1] : cleanHex.substr(2, 2), 16) || 0;
+      const b = parseInt(cleanHex.length === 3 ? cleanHex[2] + cleanHex[2] : cleanHex.substr(4, 2), 16) || 0;
+      const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+      return yiq >= 170 ? '#0f172a' : '#ffffff';
+    }
+
+    /**
      * エーワン 51467 用 HTML (48.3 × 25.4mm / 44面 連続タイプ)
      */
     function buildFormat44HTML(item) {
       const seriesText = item.series ? escapeHtml(item.series) : '&nbsp;';
       const nameText = item.name ? escapeHtml(item.name) : '';
       const sizeText = item.size ? escapeHtml(item.size) : '&nbsp;';
+      const textColor = getContrastTextColor(item.color || '#10b981');
 
       return `
         <div class="relative w-full h-full flex flex-col justify-between bg-white text-slate-800 select-none overflow-hidden pointer-events-none">
-          <!-- 上部帯: シリーズ名・見出し -->
+          <!-- 上部帯: シリーズ名・見出し（明るい色なら黒文字に自動切り替え） -->
           <div 
-            class="w-full flex items-center justify-center px-1.5 flex-shrink-0 text-white font-bold tracking-wider" 
-            style="background-color: ${escapeHtml(item.color || '#10b981')}; height: 5.5mm; font-size: 7.0pt; line-height: 1;"
+            class="w-full flex items-center justify-center px-1.5 flex-shrink-0 font-bold tracking-wider" 
+            style="background-color: ${escapeHtml(item.color || '#10b981')}; color: ${textColor}; height: 5.5mm; font-size: 7.0pt; line-height: 1;"
           >
             <span class="truncate">${seriesText}</span>
           </div>
@@ -2471,6 +2486,7 @@
       const showBadge = Boolean(item.series && item.series.trim());
       const nameText = item.name ? escapeHtml(item.name) : '';
       const sizeText = item.size ? escapeHtml(item.size) : '';
+      const textColor = getContrastTextColor(item.color || '#10b981');
 
       return `
         <div class="relative w-full h-full flex flex-col justify-between bg-white text-slate-800 p-3 select-none overflow-hidden pointer-events-none rounded-[3px]">
@@ -2478,8 +2494,8 @@
           <div class="flex items-center justify-center pt-1 min-h-[18px]">
             ${showBadge ? `
               <span 
-                class="inline-block px-3 py-1 rounded-full text-white font-bold tracking-wider shadow-xs truncate max-w-full"
-                style="background-color: ${escapeHtml(item.color || '#10b981')}; font-size: 8.5pt; line-height: 1.1;"
+                class="inline-block px-3 py-1 rounded-full font-bold tracking-wider shadow-xs truncate max-w-full" 
+                style="background-color: ${escapeHtml(item.color || '#10b981')}; color: ${textColor}; font-size: 8.5pt; line-height: 1.1;"
               >
                 ${escapeHtml(item.series)}
               </span>
