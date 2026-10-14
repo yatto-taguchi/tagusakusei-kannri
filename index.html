@@ -736,6 +736,7 @@
             <p class="text-slate-600 leading-relaxed">
               • 枠をつかんでドラッグすると、別の枠へ<strong>場所を移動・入れ替え</strong>できます。<br>
               • 枠の<strong>右下の青いポッチをドラッグ</strong>すると、<strong>真下（縦）または右隣（横）へ連続コピー</strong>（オートフィル）されます。<br>
+              • <kbd class="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Ctrl</kbd> + クリックで<strong>複数の枠を同時選択</strong>（一括編集・色変更・複製・削除）できます。<br>
               • <kbd class="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Ctrl+Z</kbd> で一つ前の処理に戻す（<kbd class="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Ctrl+Y</kbd> でやり直し）ことができます。<br>
               • <kbd class="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Ctrl+C</kbd> / <kbd class="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Ctrl+V</kbd> でのコピペも可能です。
             </p>
@@ -893,7 +894,8 @@
     let currentZoom = 1.0;
     
     // 選択状態
-    let selectedLabelId = null;   // 既存ラベルを選択中の場合のID
+    let selectedLabelId = null;   // 既存ラベルを選択中の場合の代表ID
+    let selectedLabelIds = [];    // 複数選択中の既存ラベルIDリスト (Ctrl+クリック対応)
     let selectedEmptySlot = null; // 白紙枠を選択中の場合のスロットインデックス（0-based）
 
     // クリップボード（Ctrl+C / Ctrl+V用）
@@ -1284,10 +1286,18 @@
           return;
         }
 
+        // Ctrl+A (すべての枠を一括選択)
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
+          if (isInputFocused) return;
+          e.preventDefault();
+          selectAllLabels();
+          return;
+        }
+
         // Ctrl+C (コピー)
         if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
           if (isInputFocused) return;
-          if (selectedLabelId) {
+          if (selectedLabelId || selectedLabelIds.length > 0) {
             e.preventDefault();
             copySelectedLabel();
           }
@@ -1305,7 +1315,7 @@
         // Ctrl+D (その場で複製)
         if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
           if (isInputFocused) return;
-          if (selectedLabelId) {
+          if (selectedLabelId || selectedLabelIds.length > 0) {
             e.preventDefault();
             duplicateSelectedLabel();
           }
@@ -1313,7 +1323,7 @@
 
         // Delete または Backspace (選択中の枠を削除)
         if ((e.key === 'Delete' || e.key === 'Backspace') && !isInputFocused) {
-          if (selectedLabelId) {
+          if (selectedLabelId || selectedLabelIds.length > 0) {
             e.preventDefault();
             removeSelectedLabel();
           }
@@ -1322,101 +1332,155 @@
     }
 
     /**
-     * 選択中ラベルのコピー (Ctrl+C)
+     * すべての既存ラベル枠を一括選択 (Ctrl+A)
+     */
+    function selectAllLabels() {
+      const allIds = labelData.filter(d => d !== null).map(d => d.id);
+      if (allIds.length === 0) return;
+
+      selectedLabelIds = allIds;
+      selectedLabelId = allIds[allIds.length - 1];
+      selectExistingLabel(selectedLabelId, false);
+      selectedLabelIds = allIds;
+      const count = selectedLabelIds.length;
+      document.getElementById('form-mode-title').textContent = `${count} 個の枠（すべて）を選択中`;
+      document.getElementById('selected-badge-text').textContent = `${count} 個の枠（すべて）を選択中`;
+      document.getElementById('btn-form-main-text').textContent = `${count} 個の枠を一括保存する`;
+      updateSelectionHighlight();
+      showToast('✨', `すべての枠（${count}個）を選択しました`);
+    }
+
+    /**
+     * 選択中ラベルのコピー (Ctrl+C、複数選択対応)
      */
     function copySelectedLabel() {
-      if (!selectedLabelId) return;
-      const item = labelData.find(d => d.id === selectedLabelId);
-      if (item) {
-        internalClipboard = {
-          series: item.series || '',
-          name: item.name || '',
-          size: item.size || '',
-          color: item.color || '#10b981'
-        };
-        showToast('📋', `「${item.name || '枠'}」をコピーしました（Ctrl+Vで貼り付け）`);
+      const idsToCopy = selectedLabelIds.length > 0 ? selectedLabelIds : (selectedLabelId ? [selectedLabelId] : []);
+      if (idsToCopy.length === 0) return;
+
+      const items = idsToCopy.map(id => labelData.find(d => d && d.id === id)).filter(Boolean);
+      if (items.length === 0) return;
+
+      internalClipboard = items.map(item => ({
+        series: item.series || '',
+        name: item.name || '',
+        size: item.size || '',
+        color: item.color || '#10b981'
+      }));
+
+      if (items.length === 1) {
+        showToast('📋', `「${items[0].name || '枠'}」をコピーしました（Ctrl+Vで貼り付け）`);
+      } else {
+        showToast('📋', `${items.length}個の枠をコピーしました（Ctrl+Vで貼り付け）`);
       }
     }
 
     /**
-     * クリップボードの内容をペースト (Ctrl+V)
+     * クリップボードの内容をペースト (Ctrl+V、複数選択対応)
      */
     function pasteClipboardLabel() {
       if (!internalClipboard) return;
       recordUndoSnapshot();
 
-      const newLabel = {
-        id: generateId(),
-        series: internalClipboard.series,
-        name: internalClipboard.name,
-        size: internalClipboard.size,
-        color: internalClipboard.color
-      };
+      const clipList = Array.isArray(internalClipboard) ? internalClipboard : [internalClipboard];
+      const newIds = [];
 
-      // ケース1: 白紙枠を選択中なら、その枠にペースト
-      if (selectedEmptySlot !== null) {
-        labelData[selectedEmptySlot] = newLabel;
-        render();
-        selectExistingLabel(newLabel.id);
-        showToast('📋', `枠 #${selectedEmptySlot + 1} に貼り付けました`);
-        return;
-      }
+      clipList.forEach(data => {
+        const newLabel = {
+          id: generateId(),
+          series: data.series || '',
+          name: data.name || '',
+          size: data.size || '',
+          color: data.color || '#10b981'
+        };
 
-      // ケース2: 既存枠を選択中なら、その枠を上書きペースト
-      if (selectedLabelId) {
-        const index = labelData.findIndex(d => d && d.id === selectedLabelId);
-        if (index !== -1) {
-          labelData[index] = newLabel;
-          render();
-          selectExistingLabel(newLabel.id);
-          showToast('📋', `枠 #${index + 1} に貼り付けました`);
-          return;
+        let targetSlot = 0;
+        while (labelData[targetSlot]) {
+          targetSlot++;
         }
-      }
+        labelData[targetSlot] = newLabel;
+        newIds.push(newLabel.id);
+      });
 
-      // ケース3: 枠未選択なら、先頭の空き枠を探して貼り付け
-      let targetSlot = 0;
-      while (labelData[targetSlot]) {
-        targetSlot++;
-      }
-      labelData[targetSlot] = newLabel;
       render();
-      selectExistingLabel(newLabel.id);
-      showToast('📋', `枠 #${targetSlot + 1} に貼り付けました`);
+      if (newIds.length === 1) {
+        selectExistingLabel(newIds[0], false);
+      } else {
+        selectedLabelIds = newIds;
+        selectedLabelId = newIds[newIds.length - 1];
+        selectExistingLabel(selectedLabelId, false);
+        selectedLabelIds = newIds;
+        const count = newIds.length;
+        document.getElementById('form-mode-title').textContent = `${count} 個の枠を選択中`;
+        document.getElementById('selected-badge-text').textContent = `${count} 個の枠を貼り付けました`;
+        document.getElementById('btn-form-main-text').textContent = `${count} 個の枠を一括保存する`;
+        updateSelectionHighlight();
+      }
+      showToast('📋', newIds.length > 1 ? `${newIds.length}個の枠を貼り付けました` : '枠に貼り付けました');
     }
 
     /**
      * 【既存ラベル枠をクリックした時】
+     * isMultiSelect: true の場合は Ctrl/Cmd+クリックによる複数選択・トグル切り替え
      */
-    function selectExistingLabel(id) {
-      selectedLabelId = id;
+    function selectExistingLabel(id, isMultiSelect = false) {
       selectedEmptySlot = null;
 
-      const item = labelData.find(d => d && d.id === id);
-      if (!item) return;
+      if (isMultiSelect) {
+        // Ctrl / Cmd + クリック時: トグル切り替え
+        const existingIndex = selectedLabelIds.indexOf(id);
+        if (existingIndex !== -1) {
+          // すでに選択済みなら選択解除
+          selectedLabelIds.splice(existingIndex, 1);
+        } else {
+          // 未選択なら追加
+          selectedLabelIds.push(id);
+        }
 
-      const itemIndex = labelData.findIndex(d => d && d.id === id);
+        if (selectedLabelIds.length === 0) {
+          // すべて解除された場合はフォームも初期化
+          deselectAndClear();
+          return;
+        }
 
-      // 左上のフォームに入力値をセット
-      document.getElementById('input-series').value = item.series || '';
-      document.getElementById('input-name').value = item.name || '';
-      document.getElementById('input-size').value = item.size || '';
-      document.getElementById('input-color').value = item.color || '#10b981';
-      document.getElementById('color-hex-label').textContent = (item.color || '#10B981').toUpperCase();
+        // 代表IDは最後に選択されたID
+        selectedLabelId = selectedLabelIds[selectedLabelIds.length - 1];
+      } else {
+        // 通常クリック時: 単一選択
+        selectedLabelIds = [id];
+        selectedLabelId = id;
+      }
 
-      // UIを「枠 #○ を編集中」にする
+      const count = selectedLabelIds.length;
+      const item = labelData.find(d => d && d.id === selectedLabelId);
+      if (item) {
+        // 左上のフォームに入力値をセット
+        document.getElementById('input-series').value = item.series || '';
+        document.getElementById('input-name').value = item.name || '';
+        document.getElementById('input-size').value = item.size || '';
+        document.getElementById('input-color').value = item.color || '#10b981';
+        document.getElementById('color-hex-label').textContent = (item.color || '#10B981').toUpperCase();
+      }
+
+      // UIを「枠 #○ を編集中」または「○個の枠を選択中」にする
       document.getElementById('form-section').classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-50/20');
       document.getElementById('form-section').classList.remove('bg-slate-50');
 
       document.getElementById('form-mode-icon').className = 'w-2.5 h-2.5 rounded-full bg-indigo-600 animate-ping';
-      document.getElementById('form-mode-title').textContent = `枠 #${itemIndex + 1} を編集中`;
+      
+      if (count > 1) {
+        document.getElementById('form-mode-title').textContent = `${count} 個の枠を選択中`;
+        document.getElementById('selected-badge-text').textContent = `${count} 個の枠を選択中（一括編集・色変更・複製・削除可能）`;
+        document.getElementById('btn-form-main-text').textContent = `${count} 個の枠を一括保存する`;
+      } else {
+        const itemIndex = labelData.findIndex(d => d && d.id === selectedLabelId);
+        document.getElementById('form-mode-title').textContent = `枠 #${itemIndex + 1} を編集中`;
+        document.getElementById('selected-badge-text').textContent = `枠 #${itemIndex + 1} を編集中（${item && item.name ? item.name : '文字なし'}）`;
+        document.getElementById('btn-form-main-text').textContent = '保存する';
+      }
       document.getElementById('form-mode-title').className = 'text-xs font-bold uppercase tracking-wider text-indigo-700';
 
       document.getElementById('selected-badge-container').classList.remove('hidden');
-      document.getElementById('selected-badge-text').textContent = `枠 #${itemIndex + 1} を編集中（${item.name || '文字なし'}）`;
-
       document.getElementById('qty-field-container').classList.add('opacity-40', 'pointer-events-none');
-      document.getElementById('btn-form-main-text').textContent = '保存する';
       document.getElementById('btn-form-main').className = 'w-full py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 active:scale-[0.99] text-white font-bold text-sm rounded-lg shadow-sm flex items-center justify-center gap-2 transition duration-150';
 
       document.getElementById('edit-sub-buttons').classList.remove('hidden');
@@ -1431,6 +1495,7 @@
      */
     function selectEmptySlot(slotIndex) {
       selectedLabelId = null;
+      selectedLabelIds = [];
       selectedEmptySlot = slotIndex;
 
       document.getElementById('input-series').value = '';
@@ -1467,6 +1532,7 @@
      */
     function deselectAndClear() {
       selectedLabelId = null;
+      selectedLabelIds = [];
       selectedEmptySlot = null;
 
       document.getElementById('input-series').value = '';
@@ -1518,16 +1584,19 @@
       const size = document.getElementById('input-size').value;
       const color = document.getElementById('input-color').value;
 
-      if (selectedLabelId) {
-        const item = labelData.find(d => d && d.id === selectedLabelId);
-        if (item) {
-          item.series = series;
-          item.name = name;
-          item.size = size;
-          item.color = color;
-          updateSingleCellDOM(item);
-          saveSheetDataToStorage();
-        }
+      const activeIds = selectedLabelIds.length > 0 ? selectedLabelIds : (selectedLabelId ? [selectedLabelId] : []);
+      if (activeIds.length > 0) {
+        activeIds.forEach(id => {
+          const item = labelData.find(d => d && d.id === id);
+          if (item) {
+            item.series = series;
+            item.name = name;
+            item.size = size;
+            item.color = color;
+            updateSingleCellDOM(item);
+          }
+        });
+        saveSheetDataToStorage();
         return;
       }
 
@@ -1565,16 +1634,20 @@
     }
 
     /**
-     * クイックカラー選択
+     * クイックカラー選択（複数選択時は一括色変更）
      */
     function setQuickColor(hex) {
-      if (selectedLabelId || selectedEmptySlot !== null) {
+      if (selectedLabelId || selectedLabelIds.length > 0 || selectedEmptySlot !== null) {
         recordUndoSnapshot();
       }
       const picker = document.getElementById('input-color');
       picker.value = hex;
       document.getElementById('color-hex-label').textContent = hex.toUpperCase();
       handleFormLiveUpdate();
+
+      if (selectedLabelIds.length > 1) {
+        showToast('🎨', `${selectedLabelIds.length}個の枠の色を一括変更しました`);
+      }
     }
 
     /**
@@ -1613,11 +1686,25 @@
       const size = sizeInput.value.trim();
       const color = colorInput.value || '#10b981';
 
-      // 編集確定モードの場合
-      if (selectedLabelId) {
+      // 編集確定モードの場合（単一選択または複数選択の一括保存）
+      const idsToUpdate = selectedLabelIds.length > 0 ? selectedLabelIds : (selectedLabelId ? [selectedLabelId] : []);
+      if (idsToUpdate.length > 0) {
+        idsToUpdate.forEach(id => {
+          const item = labelData.find(d => d && d.id === id);
+          if (item) {
+            item.series = series;
+            item.name = name;
+            item.size = size;
+            item.color = color;
+            updateSingleCellDOM(item);
+          }
+        });
+        saveSheetDataToStorage();
         addLabelToHistory({ series, name, size, color });
+        const count = idsToUpdate.length;
         deselectAndClear();
-        showToast('✨', 'ラベルを保存しました');
+        render();
+        showToast('✨', count > 1 ? `${count}個の枠を一括保存しました` : 'ラベルを保存しました');
         return;
       }
 
@@ -1664,48 +1751,73 @@
     }
 
     /**
-     * 選択中ラベルの複製
+     * 選択中ラベルの複製（複数選択時は一括複製）
      */
     function duplicateSelectedLabel() {
-      if (!selectedLabelId) return;
+      const idsToDup = selectedLabelIds.length > 0 ? selectedLabelIds : (selectedLabelId ? [selectedLabelId] : []);
+      if (idsToDup.length === 0) return;
       recordUndoSnapshot();
-      const index = labelData.findIndex(d => d && d.id === selectedLabelId);
-      if (index !== -1) {
-        const item = labelData[index];
-        const newItem = {
-          id: generateId(),
-          series: item.series || '',
-          name: item.name || '',
-          size: item.size || '',
-          color: item.color || '#10b981'
-        };
-        let nextSlot = index + 1;
-        while (labelData[nextSlot]) {
-          nextSlot++;
+
+      const newIds = [];
+      idsToDup.forEach(id => {
+        const item = labelData.find(d => d && d.id === id);
+        if (item) {
+          const newItem = {
+            id: generateId(),
+            series: item.series || '',
+            name: item.name || '',
+            size: item.size || '',
+            color: item.color || '#10b981'
+          };
+          let nextSlot = 0;
+          while (labelData[nextSlot]) {
+            nextSlot++;
+          }
+          labelData[nextSlot] = newItem;
+          newIds.push(newItem.id);
         }
-        labelData[nextSlot] = newItem;
-        render();
-        selectExistingLabel(newItem.id);
-        showToast('✨', '枠を複製しました');
+      });
+
+      render();
+      if (newIds.length === 1) {
+        selectExistingLabel(newIds[0], false);
+      } else {
+        selectedLabelIds = newIds;
+        selectedLabelId = newIds[newIds.length - 1];
+        selectExistingLabel(selectedLabelId, false);
+        selectedLabelIds = newIds;
+        const count = newIds.length;
+        document.getElementById('form-mode-title').textContent = `${count} 個の枠を選択中`;
+        document.getElementById('selected-badge-text').textContent = `${count} 個の枠を複製しました`;
+        document.getElementById('btn-form-main-text').textContent = `${count} 個の枠を一括保存する`;
+        updateSelectionHighlight();
       }
+      showToast('✨', idsToDup.length > 1 ? `${idsToDup.length}個の枠を複製しました` : '枠を複製しました');
     }
 
     /**
-     * 選択中ラベルの削除
+     * 選択中ラベルの削除（複数選択時は一括削除）
      */
     function removeSelectedLabel() {
-      if (!selectedLabelId) return;
+      const idsToRemove = selectedLabelIds.length > 0 ? selectedLabelIds : (selectedLabelId ? [selectedLabelId] : []);
+      if (idsToRemove.length === 0) return;
       recordUndoSnapshot();
-      const index = labelData.findIndex(item => item && item.id === selectedLabelId);
-      if (index !== -1) {
-        labelData[index] = null;
-        while (labelData.length > 0 && !labelData[labelData.length - 1]) {
-          labelData.pop();
+
+      const removeSet = new Set(idsToRemove);
+      const count = removeSet.size;
+
+      for (let i = 0; i < labelData.length; i++) {
+        if (labelData[i] && removeSet.has(labelData[i].id)) {
+          labelData[i] = null;
         }
       }
+      while (labelData.length > 0 && !labelData[labelData.length - 1]) {
+        labelData.pop();
+      }
+
       deselectAndClear();
       render();
-      showToast('🗑️', '枠を削除しました');
+      showToast('🗑️', count > 1 ? `${count}個の枠を削除しました` : '枠を削除しました');
     }
 
     /**
@@ -2127,28 +2239,37 @@
     /**
      * 選択中セルに上部バッジ ＆ 右下フィルハンドルを付与
      */
-    function attachSelectionDecorations(cell, slotNum, isBlank, slotIndex) {
+    function attachSelectionDecorations(cell, slotNum, isBlank, slotIndex, isMulti = false) {
       cell.querySelectorAll('.selected-floating-badge, .fill-handle').forEach(el => el.remove());
 
       // 頭上のエレガントなグラデーションピルバッジ
       const badge = document.createElement('div');
       badge.className = 'selected-floating-badge no-print';
-      badge.innerHTML = `
-        <span class="w-1.5 h-1.5 rounded-full ${isBlank ? 'bg-amber-300' : 'bg-pink-300'} animate-ping"></span>
-        <span>${isBlank ? `✏️ 枠 ${slotNum}（白紙）` : `✨ 枠 ${slotNum} を編集中`}</span>
-      `;
+      if (isMulti) {
+        badge.innerHTML = `
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+          <span>✓ 枠 ${slotNum}</span>
+        `;
+      } else {
+        badge.innerHTML = `
+          <span class="w-1.5 h-1.5 rounded-full ${isBlank ? 'bg-amber-300' : 'bg-pink-300'} animate-ping"></span>
+          <span>${isBlank ? `✏️ 枠 ${slotNum}（白紙）` : `✨ 枠 ${slotNum} を編集中`}</span>
+        `;
+      }
       cell.appendChild(badge);
 
-      // 右下のオートフィルハンドル（ドラッグして連続コピー）
-      const handle = document.createElement('div');
-      handle.className = 'fill-handle no-print';
-      handle.title = 'ドラッグして真下または右隣へコピー（オートフィル）';
-      handle.onmousedown = (e) => startAutofill(e, slotIndex);
-      cell.appendChild(handle);
+      // 単一選択時のみオートフィルハンドル（ドラッグして連続コピー）を表示
+      if (!isMulti) {
+        const handle = document.createElement('div');
+        handle.className = 'fill-handle no-print';
+        handle.title = 'ドラッグして真下または右隣へコピー（オートフィル）';
+        handle.onmousedown = (e) => startAutofill(e, slotIndex);
+        cell.appendChild(handle);
+      }
     }
 
     /**
-     * 選択セルのハイライト表示を更新
+     * 選択セルのハイライト表示を更新（複数選択対応）
      */
     function updateSelectionHighlight() {
       document.querySelectorAll('.label-cell').forEach(cell => {
@@ -2156,20 +2277,25 @@
         cell.querySelectorAll('.selected-floating-badge, .fill-handle').forEach(el => el.remove());
       });
 
-      if (selectedLabelId) {
-        const selectedCell = document.querySelector(`[data-cell-id="${selectedLabelId}"]`);
-        if (selectedCell) {
-          selectedCell.classList.add('selected-cell');
-          const slotIndex = labelData.findIndex(d => d && d.id === selectedLabelId);
+      const activeIds = selectedLabelIds.length > 0 ? selectedLabelIds : (selectedLabelId ? [selectedLabelId] : []);
+      const isMulti = activeIds.length > 1;
+
+      activeIds.forEach(id => {
+        const cell = document.querySelector(`[data-cell-id="${id}"]`);
+        if (cell) {
+          cell.classList.add('selected-cell');
+          const slotIndex = labelData.findIndex(d => d && d.id === id);
           if (slotIndex !== -1) {
-            attachSelectionDecorations(selectedCell, slotIndex + 1, false, slotIndex);
+            attachSelectionDecorations(cell, slotIndex + 1, false, slotIndex, isMulti);
           }
         }
-      } else if (selectedEmptySlot !== null) {
+      });
+
+      if (activeIds.length === 0 && selectedEmptySlot !== null) {
         const emptyCell = document.querySelector(`[data-empty-slot="${selectedEmptySlot}"]`);
         if (emptyCell) {
           emptyCell.classList.add('selected-cell');
-          attachSelectionDecorations(emptyCell, selectedEmptySlot + 1, true, selectedEmptySlot);
+          attachSelectionDecorations(emptyCell, selectedEmptySlot + 1, true, selectedEmptySlot, false);
         }
       }
     }
@@ -2581,7 +2707,7 @@
             cell.onclick = (e) => {
               if (isAutofilling || isDraggingLabel || hasMovedThreshold) return;
               e.stopPropagation();
-              selectExistingLabel(item.id);
+              selectExistingLabel(item.id, e.ctrlKey || e.metaKey);
             };
 
             if (currentFormat === '44') {
