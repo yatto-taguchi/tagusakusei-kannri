@@ -461,7 +461,7 @@
             </button>
           </div>
 
-          <form id="label-form" onsubmit="handleFormSubmit(event)" class="space-y-3.5 select-text">
+          <form id="label-form" onsubmit="event.preventDefault(); return false;" class="space-y-3.5 select-text">
             <!-- 上部テキスト（シリーズ名） -->
             <div>
               <label for="input-series" class="block text-xs font-bold text-slate-700 mb-1">
@@ -598,14 +598,15 @@
             <div id="form-actions-container" class="space-y-2 pt-1">
               <!-- メインボタン -->
               <button 
-                type="submit"
+                type="button"
                 id="btn-form-main"
-                class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-bold text-sm rounded-lg shadow-sm flex items-center justify-center gap-2 transition duration-150"
+                onclick="handleFormSubmit(event)"
+                class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-bold text-sm rounded-lg shadow-sm flex items-center justify-center gap-2 transition duration-150 cursor-pointer"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
                 </svg>
-                <span id="btn-form-main-text">シートに追加する</span>
+                <span id="btn-form-main-text">保存する</span>
               </button>
 
               <!-- 編集モード時のサブボタン（複製・削除） -->
@@ -1041,6 +1042,16 @@
           });
         }
       });
+
+      // フォーム内でのEnterキーによる強制確定・自動送信を防止（「保存する」ボタンクリック時のみ確定）
+      const labelForm = document.getElementById('label-form');
+      if (labelForm) {
+        labelForm.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+          }
+        });
+      }
     });
 
     /**
@@ -1390,7 +1401,7 @@
       document.getElementById('selected-badge-text').textContent = `枠 #${itemIndex + 1} を編集中（${item.name || '文字なし'}）`;
 
       document.getElementById('qty-field-container').classList.add('opacity-40', 'pointer-events-none');
-      document.getElementById('btn-form-main-text').textContent = '編集を確定する';
+      document.getElementById('btn-form-main-text').textContent = '保存する';
       document.getElementById('btn-form-main').className = 'w-full py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 active:scale-[0.99] text-white font-bold text-sm rounded-lg shadow-sm flex items-center justify-center gap-2 transition duration-150';
 
       document.getElementById('edit-sub-buttons').classList.remove('hidden');
@@ -1422,7 +1433,7 @@
       document.getElementById('selected-badge-text').textContent = `枠 #${slotIndex + 1} を選択中（白紙）`;
 
       document.getElementById('qty-field-container').classList.add('opacity-40', 'pointer-events-none');
-      document.getElementById('btn-form-main-text').textContent = `枠 #${slotIndex + 1} に追加する`;
+      document.getElementById('btn-form-main-text').textContent = '保存する';
       document.getElementById('btn-form-main').className = 'w-full py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 active:scale-[0.99] text-white font-bold text-sm rounded-lg shadow-sm flex items-center justify-center gap-2 transition duration-150';
 
       document.getElementById('edit-sub-buttons').classList.add('hidden');
@@ -1457,7 +1468,7 @@
       document.getElementById('selected-badge-container').classList.add('hidden');
       document.getElementById('qty-field-container').classList.remove('opacity-40', 'pointer-events-none');
 
-      document.getElementById('btn-form-main-text').textContent = 'シートに追加する';
+      document.getElementById('btn-form-main-text').textContent = '保存する';
       document.getElementById('btn-form-main').className = 'w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-bold text-sm rounded-lg shadow-sm flex items-center justify-center gap-2 transition duration-150';
 
       document.getElementById('edit-sub-buttons').classList.add('hidden');
@@ -1573,7 +1584,7 @@
      * フォーム送信処理（追加または確定）
      */
     function handleFormSubmit(e) {
-      e.preventDefault();
+      if (e && e.preventDefault) e.preventDefault();
       recordUndoSnapshot();
 
       const seriesInput = document.getElementById('input-series');
@@ -1591,7 +1602,7 @@
       if (selectedLabelId) {
         addLabelToHistory({ series, name, size, color });
         deselectAndClear();
-        showToast('✨', '枠の編集を確定しました');
+        showToast('✨', 'ラベルを保存しました');
         return;
       }
 
@@ -1608,7 +1619,7 @@
         addLabelToHistory(newLabel);
         deselectAndClear();
         render();
-        showToast('✨', `枠 #${selectedEmptySlot + 1} に追加しました`);
+        showToast('✨', `枠 #${selectedEmptySlot + 1} に保存しました`);
         return;
       }
 
@@ -1634,7 +1645,7 @@
 
       deselectAndClear();
       render();
-      showToast('✨', `${qty}枚のラベルを追加しました`);
+      showToast('✨', `${qty}枚のラベルを保存しました`);
     }
 
     /**
