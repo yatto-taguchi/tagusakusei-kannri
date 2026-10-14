@@ -1176,6 +1176,7 @@
      */
     function syncHistoryWithSheet() {
       if (!Array.isArray(labelData) || labelData.length === 0) return;
+      if (!Array.isArray(labelHistory)) labelHistory = [];
       let added = false;
       labelData.forEach(item => {
         if (!item) return;
@@ -1205,8 +1206,13 @@
         }
       });
 
+      if (labelHistory.length > 50) {
+        labelHistory = labelHistory.slice(0, 50);
+      }
+
       if (added) {
         saveHistoryToStorage();
+        renderHistoryUI();
       }
     }
 
@@ -1214,7 +1220,7 @@
      * サーバーへデータを自動同期保存 (POST)
      */
     async function pushDataToServer() {
-      if (!syncAvailable) return;
+      if (!syncAvailable || isPullingData) return;
       try {
         updateSyncStatusUI('syncing', 'Dropbox保存中...');
         const nowMs = Date.now();
@@ -1255,7 +1261,8 @@
      * 変更通知を受け取ってデバウンス保存
      */
     function notifyDataChange() {
-      if (!syncAvailable) return;
+      // サーバー未接続または受信処理中は無駄な再保存（Pushループ）を防止
+      if (!syncAvailable || isPullingData) return;
       clearTimeout(saveDebounceTimer);
       saveDebounceTimer = setTimeout(() => {
         pushDataToServer();
@@ -1498,6 +1505,9 @@
               infoTag.textContent = currentFormat === '44' ? 'エーワン 51467（44面）' : '1枚に 10面';
             }
           }
+
+          // シート上の全ラベルから履歴を自動補完
+          syncHistoryWithSheet();
 
           saveSheetDataToStorage();
           saveHistoryToStorage();
