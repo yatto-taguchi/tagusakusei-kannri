@@ -323,10 +323,26 @@
       </div>
     </div>
 
+    <!-- 中央：表示倍率コントロール（ヘッダーツールバー内に配置） -->
+    <div class="hidden md:flex items-center gap-1.5 bg-slate-100/90 px-3 py-1 rounded-full border border-slate-200 text-xs text-slate-700 shadow-2xs">
+      <span class="font-semibold text-slate-500 flex items-center gap-1 pl-0.5 text-[11px]">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        </svg>
+        表示倍率:
+      </span>
+      <button id="zoom-btn-65" onclick="setZoom(0.65)" class="px-2.5 py-0.5 rounded hover:bg-white/80 font-mono transition text-xs">65%</button>
+      <button id="zoom-btn-85" onclick="setZoom(0.85)" class="px-2.5 py-0.5 rounded hover:bg-white/80 font-mono transition text-xs">85%</button>
+      <button id="zoom-btn-100" onclick="setZoom(1.0)" class="px-2.5 py-0.5 rounded bg-white text-indigo-700 font-bold shadow-2xs font-mono transition text-xs">100% (実寸)</button>
+      <div class="h-3 w-[1px] bg-slate-300 mx-0.5"></div>
+      <button onclick="fitToWidth()" class="px-2.5 py-0.5 rounded hover:bg-white/80 text-indigo-700 font-semibold transition text-xs">画面幅に合わせる</button>
+    </div>
+
     <!-- 右側アクション・ステータス -->
     <div class="flex items-center gap-3 sm:gap-4">
       <!-- 枚数カウンター -->
-      <div class="hidden md:flex items-center gap-3 text-xs bg-slate-50 px-3.5 py-1.5 rounded-lg border border-slate-200">
+      <div class="hidden xl:flex items-center gap-3 text-xs bg-slate-50 px-3.5 py-1.5 rounded-lg border border-slate-200">
         <div class="flex items-center gap-1.5">
           <span class="text-slate-400">作成ラベル:</span>
           <span id="badge-total-items" class="font-bold text-slate-800">0</span>
@@ -680,24 +696,8 @@
       class="flex-1 bg-slate-200 overflow-auto p-6 md:p-8 flex flex-col items-center relative"
     >
       
-      <!-- プレビューコントロールバー ＆ 案内ガイド -->
-      <div id="zoom-controls" class="no-print sticky top-0 mb-4 z-20 flex flex-col items-center gap-2" onclick="event.stopPropagation()">
-        <div class="flex items-center gap-2 bg-white/95 backdrop-blur px-3 py-1.5 rounded-full shadow-md border border-slate-300 text-xs text-slate-700">
-          <span class="font-semibold text-slate-500 flex items-center gap-1 pl-1">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-            表示倍率:
-          </span>
-          <button id="zoom-btn-65" onclick="setZoom(0.65)" class="px-2.5 py-0.5 rounded hover:bg-slate-100 font-mono transition">65%</button>
-          <button id="zoom-btn-85" onclick="setZoom(0.85)" class="px-2.5 py-0.5 rounded hover:bg-slate-100 font-mono transition">85%</button>
-          <button id="zoom-btn-100" onclick="setZoom(1.0)" class="px-2.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold font-mono transition">100% (実寸)</button>
-          <div class="h-3 w-[1px] bg-slate-200 mx-0.5"></div>
-          <button onclick="fitToWidth()" class="px-2.5 py-0.5 rounded hover:bg-slate-100 text-indigo-700 font-semibold transition">画面幅に合わせる</button>
-        </div>
-
-        <!-- 案内ガイド -->
+      <!-- 操作案内ガイド（プレビュー上部にすっきり配置） -->
+      <div class="no-print mb-4 z-10 flex justify-center" onclick="event.stopPropagation()">
         <div class="bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-[11px] font-medium px-4 py-1.5 rounded-full shadow-md flex items-center gap-2">
           <svg class="w-3.5 h-3.5 text-amber-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
@@ -2444,9 +2444,9 @@
         const btn = document.getElementById(`zoom-btn-${val}`);
         if (btn) {
           if (Math.round(scale * 100) === parseInt(val, 10)) {
-            btn.className = 'px-2.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold font-mono transition';
+            btn.className = 'px-2.5 py-0.5 rounded bg-white text-indigo-700 font-bold shadow-2xs font-mono transition text-xs';
           } else {
-            btn.className = 'px-2.5 py-0.5 rounded hover:bg-slate-100 font-mono transition';
+            btn.className = 'px-2.5 py-0.5 rounded hover:bg-white/80 font-mono transition text-xs';
           }
         }
       });
