@@ -85,6 +85,11 @@
 3. **複数枠の同時選択（Ctrl + クリック / Cmd + クリック）**:
    - `Ctrl` キー（Macは `Cmd` キー）を押しながらシート上の枠をクリックすることで、複数の枠を同時に選択・トグル追加/解除可能
    - 複数選択中はすべての枠にインディゴ枠線と「✓ 枠 ○」バッジが表示され、左側パネルに「○個の枠を選択中」と明示
+   - **イベント競合制御・安定化設計**:
+     - **ドラッグ判定バイパス**: Ctrl/Cmd押下時は `startLabelDrag` をスキップし、マウスの微小移動によるドラッグ誤認識を完全防止してクリック判定を最優先
+     - **マウスアップ競合排除**: `mouseup` での単一選択上書きを廃止し、クリック判定を `cell.onclick` に一本化（二重実行によるトグル解除バグを根絶）
+     - **テキスト選択防止**: `.label-cell` に `select-none` を適用し、Ctrlクリック時のブラウザ標準テキストハイライトを抑制
+     - **ドラッグ完了誤クリック抑制**: ドラッグ移動完了時は `suppressNextCellClick` フラグにより直後の不要なクリックイベントを抑制
    - **一括操作の対応**:
      - **一括フォーム反映・保存**: 左フォームの内容変更が選択中のすべての枠へ即時リアルタイム反映され、「○個の枠を一括保存する」で一括確定
      - **一括カラー変更**: プリセットパレットまたはカラーピッカーのクリックで、選択中のすべての枠の色をワンクリック一括変更
@@ -172,6 +177,17 @@ interface HistoryItem {
 
 type LabelHistory = HistoryItem[];
 ```
+
+### 5.3 選択状態管理設計 (`selectedLabelIds`)
+複数選択・単一選択・白紙選択を破綻なく制御するための状態変数群。
+```typescript
+let selectedLabelId: string | null = null;   // 単一選択時または複数選択中の代表ID
+let selectedLabelIds: string[] = [];        // 複数選択中の既存ラベルIDリスト
+let selectedEmptySlot: number | null = null; // 白紙枠選択中のスロットインデックス
+```
+- 通常クリック時: `selectedLabelIds = [id]`, `selectedLabelId = id`
+- Ctrl/Cmdクリック時: `selectedLabelIds` 内に存在すれば除外（トグルOFF）、未存在なら追加（トグルON）
+- 空スロット選択時: `selectedLabelIds = []`, `selectedLabelId = null`, `selectedEmptySlot = slotIndex`
 
 ---
 
