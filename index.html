@@ -1134,6 +1134,7 @@
 
     let syncAvailable = false;
     let lastSyncedAt = null;
+    let lastSyncedAtMs = 0;
     let saveDebounceTimer = null;
     let isPullingData = false;
 
@@ -1170,16 +1171,58 @@
     }
 
     /**
+     * シート上のすべての実データから履歴を自動補完・統合
+     * （シートに存在するラベルが履歴に入っていない状態を完全に防ぐ）
+     */
+    function syncHistoryWithSheet() {
+      if (!Array.isArray(labelData) || labelData.length === 0) return;
+      let added = false;
+      labelData.forEach(item => {
+        if (!item) return;
+        const series = (item.series || '').trim();
+        const name = (item.name || '').trim();
+        const size = (item.size || '').trim();
+        const color = item.color || '#10b981';
+        if (!series && !name && !size) return;
+
+        const exists = labelHistory.some(h => 
+          (h.series || '').trim() === series &&
+          (h.name || '').trim() === name &&
+          (h.size || '').trim() === size &&
+          (h.color || '#10b981').toLowerCase() === color.toLowerCase()
+        );
+
+        if (!exists) {
+          labelHistory.unshift({
+            id: item.id || generateId(),
+            series,
+            name,
+            size,
+            color,
+            timestamp: Date.now()
+          });
+          added = true;
+        }
+      });
+
+      if (added) {
+        saveHistoryToStorage();
+      }
+    }
+
+    /**
      * サーバーへデータを自動同期保存 (POST)
      */
     async function pushDataToServer() {
       if (!syncAvailable) return;
       try {
         updateSyncStatusUI('syncing', 'Dropbox保存中...');
+        const nowMs = Date.now();
         const payload = {
           version: '1.8.0',
           appName: 'カスタムラベルスタジオ',
-          updatedAt: new Date().toISOString(),
+          updatedAt: new Date(nowMs).toISOString(),
+          updatedAtMs: nowMs,
           currentFormat: currentFormat,
           labelData: labelData,
           labelHistory: labelHistory
@@ -1193,8 +1236,9 @@
 
         if (res.ok) {
           const result = await res.json();
-          lastSyncedAt = result.savedAt || new Date().toISOString();
-          const d = new Date(lastSyncedAt);
+          lastSyncedAtMs = result.updatedAtMs || result.savedAtMs || nowMs;
+          lastSyncedAt = result.savedAt || new Date(lastSyncedAtMs).toISOString();
+          const d = new Date(lastSyncedAtMs);
           const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
           updateSyncStatusUI('synced', `Dropbox同期済 (${timeStr})`, '全PCと自動同期されています。クリックで再同期確認');
         } else {
@@ -1235,15 +1279,16 @@
 
         if (result.exists && result.data) {
           const imported = result.data;
-          const remoteUpdatedAt = result.updatedAt || imported.updatedAt;
+          const remoteUpdatedAtMs = result.updatedAtMs || (imported && imported.updatedAtMs) || (result.updatedAt ? new Date(result.updatedAt).getTime() : 0);
 
-          // 手動更新でなく、手元の日時が新しければスキップ
-          if (!isManual && lastSyncedAt && remoteUpdatedAt && new Date(remoteUpdatedAt) <= new Date(lastSyncedAt)) {
+          // 手動更新でなく、手元の日時が新しければスキップ（ミリ秒数値で比較）
+          if (!isManual && lastSyncedAtMs > 0 && remoteUpdatedAtMs > 0 && remoteUpdatedAtMs <= lastSyncedAtMs) {
             isPullingData = false;
             return true;
           }
 
-          lastSyncedAt = remoteUpdatedAt || new Date().toISOString();
+          lastSyncedAtMs = remoteUpdatedAtMs || Date.now();
+          lastSyncedAt = result.updatedAt || imported.updatedAt || new Date(lastSyncedAtMs).toISOString();
 
           // 既存のシートおよび履歴へ反映
           let changed = false;
@@ -1265,14 +1310,15 @@
             }
           }
 
-          if (changed) {
-            localStorage.setItem(SHEET_DATA_STORAGE_KEY, JSON.stringify(labelData));
-            localStorage.setItem(FORMAT_STORAGE_KEY, currentFormat);
-            localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(labelHistory));
-            render();
-          }
+          // シート上の全ラベルから履歴を自動補完（シートにあれば履歴に必ず復元）
+          syncHistoryWithSheet();
 
-          const d = new Date(lastSyncedAt);
+          localStorage.setItem(SHEET_DATA_STORAGE_KEY, JSON.stringify(labelData));
+          localStorage.setItem(FORMAT_STORAGE_KEY, currentFormat);
+          localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(labelHistory));
+          render();
+
+          const d = new Date(lastSyncedAtMs);
           const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
           updateSyncStatusUI('synced', `Dropbox同期済 (${timeStr})`, '全PCと自動同期されています。クリックで再同期確認');
           if (isManual) {
@@ -1282,8 +1328,7 @@
           return true;
         } else {
           // サーバー上にまだ共有ファイルがない場合（初回の初回）
-          // 現在のPCのデータをサーバーへ初回自動エクスポート！
-          console.log('Dropbox共有ファイルが未作成のため、現在のデータを初回送信します');
+          syncHistoryWithSheet();
           await pushDataToServer();
           isPullingData = false;
           return true;
@@ -1364,6 +1409,7 @@
       } catch (e) {
         console.warn('履歴読み込み失敗:', e);
       }
+      syncHistoryWithSheet();
     }
 
     /**
@@ -2012,6 +2058,13 @@
       const name = nameInput.value.trim();
       const size = sizeInput.value.trim();
       const color = colorInput.value || '#10b981';
+
+      // 文字がすべて空欄の場合は保存をブロックし、入力を促す
+      if (!series && !name && !size) {
+        showToast('⚠️', '上部テキストまたは中央メイン文字を入力してください');
+        if (nameInput) nameInput.focus();
+        return;
+      }
 
       // 編集確定モードの場合（単一選択または複数選択の一括保存）
       const idsToUpdate = selectedLabelIds.length > 0 ? selectedLabelIds : (selectedLabelId ? [selectedLabelId] : []);

@@ -46,7 +46,8 @@ class CustomLabelStudioHandler(http.server.SimpleHTTPRequestHandler):
                     res = {
                         "exists": True,
                         "data": data,
-                        "updatedAt": datetime.fromtimestamp(os.path.getmtime(DATA_FILE)).isoformat()
+                        "updatedAt": datetime.fromtimestamp(os.path.getmtime(DATA_FILE)).isoformat(),
+                        "updatedAtMs": int(os.path.getmtime(DATA_FILE) * 1000)
                     }
                 except Exception as e:
                     res = {"exists": False, "error": str(e)}
@@ -93,9 +94,12 @@ class CustomLabelStudioHandler(http.server.SimpleHTTPRequestHandler):
                     json.dump(payload, f, ensure_ascii=False, indent=2)
                 os.replace(tmp_file, DATA_FILE)
 
+                mtime_ms = int(os.path.getmtime(DATA_FILE) * 1000)
                 res = {
                     "success": True,
                     "savedAt": datetime.now().isoformat(),
+                    "savedAtMs": mtime_ms,
+                    "updatedAtMs": mtime_ms,
                     "size": os.path.getsize(DATA_FILE)
                 }
                 status_code = 200
