@@ -813,6 +813,8 @@
     let labelData = [];
     let labelHistory = []; // ラベル作成履歴（重複なし）: { id, series, name, size, color, timestamp }
     const HISTORY_STORAGE_KEY = 'aone_51467_label_history';
+    const SHEET_DATA_STORAGE_KEY = 'aone_51467_sheet_data';
+    const FORMAT_STORAGE_KEY = 'aone_51467_current_format';
 
     let currentFormat = '44'; // '44' または '10'
     let showGuides = true;
@@ -877,11 +879,59 @@
      */
     window.addEventListener('DOMContentLoaded', () => {
       loadHistoryFromStorage();
-      initSampleData();
+      const hasSavedSheet = loadSheetDataFromStorage();
+      if (!hasSavedSheet) {
+        // 初回訪問時のみ見本データをロード
+        initSampleData();
+      }
       render();
       initKeyboardShortcuts();
       initGlobalDragListeners();
     });
+
+    /**
+     * シート上の配置データと選択用紙をローカルストレージから読み込み
+     */
+    function loadSheetDataFromStorage() {
+      try {
+        // 保存されていた用紙フォーマットを復元
+        const rawFormat = localStorage.getItem(FORMAT_STORAGE_KEY);
+        if (rawFormat && FORMAT_SPECS[rawFormat]) {
+          currentFormat = rawFormat;
+          const selectEl = document.getElementById('select-format');
+          if (selectEl) selectEl.value = currentFormat;
+          const infoTag = document.getElementById('format-info-tag');
+          if (infoTag) {
+            infoTag.textContent = currentFormat === '44' ? 'エーワン 51467（44面）' : '1枚に 10面';
+          }
+        }
+
+        // 保存されていたシート上のラベル配置データを復元
+        const raw = localStorage.getItem(SHEET_DATA_STORAGE_KEY);
+        if (raw !== null) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            labelData = parsed;
+            return true; // 保存データが存在した
+          }
+        }
+      } catch (e) {
+        console.warn('シートデータ読み込み失敗:', e);
+      }
+      return false; // 保存データなし（初回）
+    }
+
+    /**
+     * シート上の配置データと選択用紙をローカルストレージへ保存
+     */
+    function saveSheetDataToStorage() {
+      try {
+        localStorage.setItem(SHEET_DATA_STORAGE_KEY, JSON.stringify(labelData));
+        localStorage.setItem(FORMAT_STORAGE_KEY, currentFormat);
+      } catch (e) {
+        console.warn('シートデータ保存失敗:', e);
+      }
+    }
 
     /**
      * ローカルストレージから履歴を読み込み
@@ -991,6 +1041,7 @@
       }
 
       deselectAndClear();
+      saveSheetDataToStorage();
     }
 
     /**
@@ -999,6 +1050,7 @@
     function loadSampleData() {
       initSampleData();
       render();
+      showToast('✨', '見本ラベルデータを読み込みました');
     }
 
     /**
@@ -1275,6 +1327,7 @@
           item.size = size;
           item.color = color;
           updateSingleCellDOM(item);
+          saveSheetDataToStorage();
         }
         return;
       }
@@ -1298,6 +1351,7 @@
           item.size = size;
           item.color = color;
           updateSingleCellDOM(item);
+          saveSheetDataToStorage();
         }
       }
     }
@@ -1507,7 +1561,7 @@
     }
 
     /**
-     * 画面再描画
+     * 画面再描画 ＆ シートデータ自動保存
      */
     function render() {
       renderHistoryUI();
@@ -1515,6 +1569,7 @@
       updateBadges();
       toggleGuides(showGuides);
       updateSelectionHighlight();
+      saveSheetDataToStorage(); // 常に最新のシート状態をローカルストレージに自動保存
     }
 
     /**
