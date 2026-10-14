@@ -1,0 +1,22 @@
+@echo off
+cd /d "%~dp0"
+
+rem ???8080????????????????
+netstat -ano | findstr /C:":8080" > nul
+if %errorlevel% equ 0 goto OPEN_SERVER
+
+rem Python????????
+where python > nul 2>&1
+if %errorlevel% equ 0 (
+    start "" /min python -m http.server 8080
+    ping 127.0.0.1 -n 2 > nul
+    goto OPEN_SERVER
+)
+
+rem Python????????HTML???????
+start "" "index.html"
+exit
+
+:OPEN_SERVER
+start "" "http://localhost:8080"
+exit
