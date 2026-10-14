@@ -1,0 +1,2481 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>カスタムラベル印刷スタジオ - 美容サロン向けラベル＆名刺作成</title>
+  <!-- Google Fonts: Noto Sans JP -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Noto Sans JP"', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* ========================================================
+       A4 シート (210mm x 297mm) CSS
+       ======================================================== */
+    .sheet {
+      width: 210mm;
+      height: 297mm;
+      position: relative;
+      background-color: #ffffff;
+      box-sizing: border-box;
+      margin: 0 auto;
+      page-break-after: always;
+      break-after: page;
+      page-break-inside: avoid;
+      break-inside: avoid;
+      overflow: visible; /* 選択バッジやフィルハンドルがシート外周でも綺麗に見えるよう可視化 */
+    }
+
+    /* プレビュー時のガイド枠線 */
+    .show-guides .label-cell {
+      outline: 1px dashed rgba(148, 163, 184, 0.7);
+      outline-offset: -1px;
+    }
+
+    /* ========================================================
+       【選択スタイル ＆ フィルハンドル】
+       ======================================================== */
+    .label-cell.selected-cell {
+      outline: 3.5px solid #6366f1 !important; /* 太くて鮮やかなインディゴパープル */
+      outline-offset: -1px !important;
+      border-radius: 4px !important;
+      z-index: 40 !important;
+      background-color: #ffffff !important;
+      animation: softGlowPulse 2.4s infinite ease-in-out;
+    }
+
+    /* 呼吸するようにふんわり光る柔らかなグロー影 */
+    @keyframes softGlowPulse {
+      0%, 100% {
+        box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.25), 0 8px 24px -2px rgba(99, 102, 241, 0.3) !important;
+      }
+      50% {
+        box-shadow: 0 0 0 6.5px rgba(99, 102, 241, 0.42), 0 10px 32px -2px rgba(99, 102, 241, 0.45) !important;
+      }
+    }
+
+    /* 右下のオートフィルハンドル（ドラッグコピー用ポッチ） */
+    .fill-handle {
+      position: absolute;
+      bottom: -4px;
+      right: -4px;
+      width: 11px;
+      height: 11px;
+      background-color: #4f46e5;
+      border: 2px solid #ffffff;
+      border-radius: 2px;
+      cursor: crosshair;
+      z-index: 60;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+      transition: transform 0.1s ease-out;
+    }
+    .fill-handle:hover {
+      transform: scale(1.4);
+      background-color: #4338ca;
+    }
+
+    /* ドラッグ中にコピー対象となる枠のハイライト（順次1つずつ選択） */
+    .label-cell.autofill-target {
+      outline: 2.5px dashed #4f46e5 !important;
+      outline-offset: -1px !important;
+      background-color: rgba(99, 102, 241, 0.15) !important;
+      z-index: 35 !important;
+    }
+
+    /* 頭上の洗練されたグラデーションピルバッジ */
+    .selected-floating-badge {
+      position: absolute;
+      top: -28px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      padding: 3px 12px;
+      border-radius: 9999px;
+      box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      white-space: nowrap;
+      z-index: 60;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      animation: badgePop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .selected-floating-badge::after {
+      content: '';
+      position: absolute;
+      bottom: -4px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-width: 4px 4px 0 4px;
+      border-style: solid;
+      border-color: #7c3aed transparent transparent transparent;
+    }
+
+    @keyframes badgePop {
+      from { opacity: 0; transform: translate(-50%, 4px) scale(0.95); }
+      to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    }
+
+    /* セルのホバーエフェクト */
+    .label-cell:hover:not(.selected-cell):not(.autofill-target):not(.drop-target):not(.drop-target-swap) {
+      outline: 2px solid #818cf8 !important;
+      outline-offset: -1px;
+      border-radius: 3px;
+      cursor: grab;
+    }
+
+    /* ドラッグ移動中の元枠スタイル */
+    .label-cell.dragging-source {
+      opacity: 0.35 !important;
+      outline: 2px dashed #94a3b8 !important;
+      outline-offset: -1px;
+    }
+
+    /* ドロップ候補先（白紙枠へ移動） */
+    .label-cell.drop-target {
+      outline: 3px solid #10b981 !important; /* エメラルドグリーン */
+      outline-offset: -1px !important;
+      box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.35), 0 8px 24px rgba(16, 185, 129, 0.4) !important;
+      background-color: rgba(16, 185, 129, 0.1) !important;
+      z-index: 50 !important;
+      border-radius: 4px;
+      animation: dropPulse 1.2s infinite ease-in-out;
+    }
+
+    /* ドロップ候補先（既存枠と入れ替え） */
+    .label-cell.drop-target-swap {
+      outline: 3px solid #f59e0b !important; /* アンバーオレンジ */
+      outline-offset: -1px !important;
+      box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.35), 0 8px 24px rgba(245, 158, 11, 0.4) !important;
+      background-color: rgba(245, 158, 11, 0.1) !important;
+      z-index: 50 !important;
+      border-radius: 4px;
+      animation: dropPulse 1.2s infinite ease-in-out;
+    }
+
+    @keyframes dropPulse {
+      0%, 100% { transform: scale(1.0); }
+      50% { transform: scale(1.02); }
+    }
+
+    /* ドラッグ追従ゴーストカード */
+    .label-drag-ghost {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.95;
+      transform: translate(-50%, -50%) rotate(2.5deg) scale(1.04);
+      box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.3), 0 10px 15px -5px rgba(0, 0, 0, 0.15);
+      border-radius: 6px;
+      border: 2.5px solid #6366f1;
+      background: #ffffff;
+      overflow: hidden;
+      cursor: grabbing;
+    }
+
+    /* ドラッグ移動中のマウスカーソル */
+    body.cursor-grabbing, body.cursor-grabbing * {
+      cursor: grabbing !important;
+    }
+
+    /* トースト通知 */
+    #toast-notification {
+      transition: opacity 0.25s, transform 0.25s;
+    }
+
+    /* ========================================================
+       印刷時設定 (@media print)
+       ======================================================== */
+    @page {
+      size: A4 portrait;
+      margin: 0;
+    }
+
+    @media print {
+      html, body {
+        width: 210mm !important;
+        height: auto !important;
+        min-height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        overflow: visible !important;
+        display: block !important;
+      }
+
+      /* 画面専用UIを印刷から除外 */
+      header,
+      aside,
+      .no-print,
+      #zoom-controls,
+      .sheet-header-badge,
+      .print-hint-box,
+      .cell-quick-actions,
+      .fill-handle,
+      .selected-floating-badge,
+      .empty-slot-guide,
+      .label-drag-ghost,
+      .drop-indicator-badge,
+      #toast-notification {
+        display: none !important;
+      }
+
+      /* シート群のリセット */
+      main,
+      #preview-area,
+      #preview-container {
+        display: block !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 210mm !important;
+        background: transparent !important;
+        overflow: visible !important;
+        transform: none !important;
+      }
+
+      .sheet-wrapper {
+        margin: 0 !important;
+        padding: 0 !important;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+
+      .sheet {
+        margin: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+        overflow: hidden !important;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+
+      .sheet:last-child {
+        page-break-after: auto !important;
+        break-after: auto !important;
+      }
+
+      /* 背景色・文字色を正確に印刷 */
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+
+      .label-cell {
+        outline: none !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+      }
+    }
+
+    /* スクロールバー */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="h-screen flex flex-col font-sans bg-slate-100 text-slate-800 antialiased selection:bg-rose-100 selection:text-rose-600 select-none">
+
+  <!-- ==================== ヘッダー ==================== -->
+  <header class="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0 z-20 shadow-sm no-print">
+    <!-- タイトル -->
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 via-pink-500 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"></path>
+          <path d="M7 7h.01"></path>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+          カスタムラベル印刷スタジオ
+          <span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">エーワン 51467 対応</span>
+        </h1>
+        <p class="text-xs text-slate-500 hidden sm:block">A-one 品番51467（48.3×25.4mm / 44面）最適化レイアウト</p>
+      </div>
+    </div>
+
+    <!-- 右側アクション・ステータス -->
+    <div class="flex items-center gap-3 sm:gap-4">
+      <!-- 枚数カウンター -->
+      <div class="hidden md:flex items-center gap-3 text-xs bg-slate-50 px-3.5 py-1.5 rounded-lg border border-slate-200">
+        <div class="flex items-center gap-1.5">
+          <span class="text-slate-400">作成ラベル:</span>
+          <span id="badge-total-items" class="font-bold text-slate-800">0</span>
+          <span class="text-slate-500">片</span>
+        </div>
+        <span class="text-slate-300">|</span>
+        <div class="flex items-center gap-1.5">
+          <span class="text-slate-400">必要な用紙:</span>
+          <span id="badge-total-sheets" class="font-bold text-indigo-600">1</span>
+          <span class="text-slate-500">枚 (A4)</span>
+        </div>
+      </div>
+
+      <!-- 印刷 / PDF保存ボタン -->
+      <button 
+        id="btn-print"
+        onclick="window.print()"
+        class="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold text-sm rounded-lg shadow-sm hover:shadow transition-all duration-150 active:scale-95"
+        title="ブラウザの印刷ダイアログを開きます（PDF保存も可能）"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+        </svg>
+        <span>印刷 / PDF出力</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ==================== メイン領域 ==================== -->
+  <main class="flex-1 flex overflow-hidden">
+    
+    <!-- ==================== 左側：操作パネル ==================== -->
+    <aside class="w-80 md:w-96 bg-white border-r border-slate-200 flex flex-col flex-shrink-0 z-10 no-print overflow-hidden shadow-sm">
+      <div class="flex-1 overflow-y-auto p-5 space-y-6">
+        
+        <!-- 【左上：ラベル入力・編集エリア】 -->
+        <section id="form-section" class="space-y-4 rounded-xl p-4 bg-slate-50 border border-slate-200/90 transition-all duration-200">
+          
+          <!-- ヘッダー＆モード表示 -->
+          <div class="flex items-center justify-between pb-2 border-b border-slate-200">
+            <div class="flex items-center gap-2">
+              <span id="form-mode-icon" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <h2 id="form-mode-title" class="text-xs font-bold uppercase tracking-wider text-slate-700">
+                新規ラベルの追加
+              </h2>
+            </div>
+            
+            <div class="flex items-center gap-2">
+              <!-- 欄を空にするボタン -->
+              <button 
+                type="button" 
+                id="btn-clear-form" 
+                onclick="clearFormToEmpty()" 
+                class="text-[11px] font-bold text-slate-500 hover:text-slate-800 bg-white border border-slate-300 px-2 py-0.5 rounded shadow-2xs hover:bg-slate-50 transition"
+                title="入力欄をすべて空にします"
+              >
+                欄を空にする
+              </button>
+              
+              <!-- 見本データ入力ボタン -->
+              <button 
+                type="button" 
+                id="btn-load-sample"
+                onclick="loadSampleData()" 
+                class="text-xs text-rose-500 hover:text-rose-600 font-semibold hover:underline flex items-center gap-1"
+                title="美容室向けの見本ラベルデータを読み込みます"
+              >
+                見本入力
+              </button>
+            </div>
+          </div>
+
+          <!-- 選択中ステータスバッジ -->
+          <div id="selected-badge-container" class="hidden p-2.5 bg-indigo-50/90 border border-indigo-200/90 rounded-lg text-xs text-indigo-950 flex items-center justify-between shadow-2xs">
+            <div class="flex items-center gap-2 font-bold">
+              <span class="w-2 h-2 rounded-full bg-indigo-600 animate-ping"></span>
+              <span id="selected-badge-text">枠 #1 を編集中</span>
+            </div>
+            <button 
+              type="button"
+              onclick="deselectAndClear()"
+              class="text-[11px] text-indigo-600 hover:text-indigo-800 underline font-semibold"
+            >
+              選択を解除
+            </button>
+          </div>
+
+          <form id="label-form" onsubmit="handleFormSubmit(event)" class="space-y-3.5 select-text">
+            <!-- 上部テキスト（シリーズ名） -->
+            <div>
+              <label for="input-series" class="block text-xs font-bold text-slate-700 mb-1">
+                上部テキスト <span class="text-slate-400 font-normal">（空でもOK / シリーズ名など）</span>
+              </label>
+              <input 
+                type="text" 
+                id="input-series" 
+                placeholder="例: ボタニカルリペア" 
+                value=""
+                oninput="handleFormLiveUpdate()"
+                class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition"
+              >
+            </div>
+
+            <!-- 中央メイン文字（商品名） -->
+            <div>
+              <label for="input-name" class="block text-xs font-bold text-slate-700 mb-1">
+                中央メイン文字 <span class="text-slate-400 font-normal">（空でもOK / 商品名など）</span>
+              </label>
+              <input 
+                type="text" 
+                id="input-name" 
+                placeholder="例: モイスチャーシャンプー" 
+                value=""
+                oninput="handleFormLiveUpdate()"
+                class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition font-medium"
+              >
+            </div>
+
+            <!-- 下部テキスト（容量や価格） -->
+            <div>
+              <label for="input-size" class="block text-xs font-bold text-slate-700 mb-1">
+                下部テキスト <span class="text-slate-400 font-normal">（空でもOK / 容量・価格など）</span>
+              </label>
+              <input 
+                type="text" 
+                id="input-size" 
+                placeholder="例: 300ml / ¥2,800 (税込)" 
+                value=""
+                oninput="handleFormLiveUpdate()"
+                class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition"
+              >
+            </div>
+
+            <!-- カラー ＆ 枚数 -->
+            <div class="grid grid-cols-2 gap-3 pt-1">
+              <!-- カラーピッカー -->
+              <div>
+                <label for="input-color" class="block text-xs font-bold text-slate-700 mb-1">
+                  テーマカラー
+                </label>
+                <div class="flex items-center gap-2 bg-white border border-slate-300 rounded-lg p-1.5 focus-within:ring-2 focus-within:ring-indigo-500/25 focus-within:border-indigo-500">
+                  <input 
+                    type="color" 
+                    id="input-color" 
+                    value="#10b981" 
+                    oninput="handleColorPickerInput(this.value)"
+                    class="w-7 h-7 rounded border-0 cursor-pointer p-0 bg-transparent flex-shrink-0"
+                  >
+                  <span id="color-hex-label" class="text-xs font-mono text-slate-600 uppercase font-semibold">#10B981</span>
+                </div>
+              </div>
+
+              <!-- 作成枚数 (Qty) -->
+              <div id="qty-field-container">
+                <label for="input-qty" class="block text-xs font-bold text-slate-700 mb-1">
+                  作成枚数
+                </label>
+                <div class="relative">
+                  <input 
+                    type="number" 
+                    id="input-qty" 
+                    value="1" 
+                    min="1" 
+                    max="440"
+                    class="w-full px-3 py-2 pr-8 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition font-bold"
+                  >
+                  <span class="absolute right-3 top-2.5 text-xs text-slate-400 pointer-events-none">枚</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- ワンクリック選択カラー -->
+            <div>
+              <span class="block text-[11px] font-medium text-slate-500 mb-1.5">よく使う色（ワンクリック選択）:</span>
+              <div class="flex items-center gap-2 flex-wrap">
+                <!-- ピンク -->
+                <button type="button" onclick="setQuickColor('#ec4899')" title="ピンク" class="w-6 h-6 rounded-full bg-[#ec4899] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
+                <!-- 赤 -->
+                <button type="button" onclick="setQuickColor('#ef4444')" title="レッド" class="w-6 h-6 rounded-full bg-[#ef4444] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
+                <!-- オレンジ -->
+                <button type="button" onclick="setQuickColor('#f97316')" title="オレンジ" class="w-6 h-6 rounded-full bg-[#f97316] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
+                <!-- ゴールド・アンバー -->
+                <button type="button" onclick="setQuickColor('#d97706')" title="アンバーゴールド" class="w-6 h-6 rounded-full bg-[#d97706] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
+                <!-- グリーン -->
+                <button type="button" onclick="setQuickColor('#10b981')" title="ボタニカルグリーン" class="w-6 h-6 rounded-full bg-[#10b981] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
+                <!-- シアン・水色 -->
+                <button type="button" onclick="setQuickColor('#06b6d4')" title="ミントシアン" class="w-6 h-6 rounded-full bg-[#06b6d4] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
+                <!-- ブルー -->
+                <button type="button" onclick="setQuickColor('#3b82f6')" title="サロンブルー" class="w-6 h-6 rounded-full bg-[#3b82f6] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
+                <!-- パープル -->
+                <button type="button" onclick="setQuickColor('#8b5cf6')" title="エレガントパープル" class="w-6 h-6 rounded-full bg-[#8b5cf6] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
+                <!-- チャコールグレー -->
+                <button type="button" onclick="setQuickColor('#334155')" title="シックチャコール" class="w-6 h-6 rounded-full bg-[#334155] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
+              </div>
+            </div>
+
+            <!-- アクションボタン領域 -->
+            <div id="form-actions-container" class="space-y-2 pt-1">
+              <!-- メインボタン -->
+              <button 
+                type="submit"
+                id="btn-form-main"
+                class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-bold text-sm rounded-lg shadow-sm flex items-center justify-center gap-2 transition duration-150"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+                </svg>
+                <span id="btn-form-main-text">シートに追加する</span>
+              </button>
+
+              <!-- 編集モード時のサブボタン（複製・削除） -->
+              <div id="edit-sub-buttons" class="hidden grid-cols-2 gap-2">
+                <button 
+                  type="button" 
+                  onclick="duplicateSelectedLabel()"
+                  class="py-2 px-3 bg-white hover:bg-indigo-50 border border-slate-300 text-indigo-700 font-semibold text-xs rounded-lg shadow-2xs flex items-center justify-center gap-1.5 transition"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  この枠を複製 (Ctrl+D)
+                </button>
+                <button 
+                  type="button" 
+                  onclick="removeSelectedLabel()"
+                  class="py-2 px-3 bg-white hover:bg-red-50 border border-slate-300 text-red-600 font-semibold text-xs rounded-lg shadow-2xs flex items-center justify-center gap-1.5 transition"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  この枠を削除 (Del)
+                </button>
+              </div>
+            </div>
+
+          </form>
+        </section>
+
+        <!-- 【設定＆追加済みリストエリア】 -->
+        <section class="space-y-4 pt-2 border-t border-slate-200">
+          <div class="pb-1">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5 mb-2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              用紙の選択（レイアウト）
+            </h2>
+            
+            <!-- 用紙選択 selectタグ -->
+            <div class="relative">
+              <select 
+                id="select-format" 
+                onchange="handleFormatChange(this.value)"
+                class="w-full appearance-none px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 outline-none transition font-semibold text-slate-800 pr-9 cursor-pointer"
+              >
+                <option value="44" selected>【エーワン 51467】44面（48.3×25.4mm）4列×11連 連続タイプ</option>
+                <option value="10">10面カード / 名刺サイズ（91 × 55mm） - A4 2列×5段</option>
+              </select>
+              <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-500">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </div>
+            </div>
+
+            <!-- ガイド線トグル ＆ 情報タグ -->
+            <div class="mt-2.5 flex items-center justify-between text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+              <label for="toggle-guides" class="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" id="toggle-guides" checked onchange="toggleGuides(this.checked)" class="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4">
+                <span>ミシン目ガイド線を表示</span>
+              </label>
+              <span id="format-info-tag" class="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">エーワン 51467（44面）</span>
+            </div>
+
+            <!-- エーワン 51467 印刷用ワンポイントアドバイス -->
+            <div class="mt-2 p-2.5 bg-amber-50/90 border border-amber-200/90 rounded-lg text-[11px] text-amber-950 leading-relaxed flex items-start gap-1.5">
+              <span class="text-amber-600 font-bold mt-0.5 flex-shrink-0">⚠️</span>
+              <div>
+                <span class="font-bold text-amber-900">印刷設定のポイント：</span>印刷ダイアログの「詳細設定」で<strong>「倍率：100%（実際のサイズ）」</strong>、<strong>「余白：なし（または既定）」</strong>に設定すると用紙のマイクロミシン目にピッタリ合います。
+              </div>
+            </div>
+          </div>
+
+          <!-- 【ラベル作成履歴エリア（重複なし）】 -->
+          <div class="space-y-2.5 pt-2 border-t border-slate-100">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>ラベル履歴（重複なし）</span>
+                <span id="history-count-badge" class="px-1.5 py-0.2 text-[10px] rounded-full bg-slate-200 text-slate-700 font-bold">0件</span>
+              </h3>
+              <!-- シート全消去ボタン -->
+              <button 
+                type="button" 
+                onclick="clearAllLabels()" 
+                id="btn-clear-all"
+                class="text-xs text-slate-400 hover:text-red-500 font-semibold transition disabled:opacity-40 disabled:hover:text-slate-400"
+                title="シート上のすべてのラベルを消去して白紙に戻します"
+              >
+                シート全消去
+              </button>
+            </div>
+
+            <!-- モーダルを大きく開くメインボタン -->
+            <button 
+              type="button" 
+              onclick="openHistoryModal()"
+              class="w-full py-2.5 px-3 bg-gradient-to-r from-indigo-500 via-indigo-600 to-violet-600 hover:from-indigo-600 hover:to-violet-700 active:scale-[0.99] text-white font-bold text-xs rounded-lg shadow-sm shadow-indigo-500/20 flex items-center justify-center gap-2 transition duration-150 cursor-pointer"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+              <span>履歴から選ぶ（大きく表示）</span>
+              <svg class="w-3.5 h-3.5 opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+
+            <!-- 直近の履歴リスト（クリックで左上フォームに自動入力） -->
+            <div id="recent-history-container" class="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+              <!-- JSで動的に追加 -->
+            </div>
+          </div>
+
+          <!-- 操作ヒント -->
+          <div class="bg-indigo-50/70 border border-indigo-100 rounded-lg p-3 text-[11px] text-indigo-900 space-y-1.5">
+            <div class="font-bold flex items-center gap-1 text-indigo-950">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              ドラッグ移動＆オートフィル
+            </div>
+            <p class="text-slate-600 leading-relaxed">
+              • 枠をつかんでドラッグすると、別の枠へ<strong>場所を移動・入れ替え</strong>できます。<br>
+              • 枠の<strong>右下の青いポッチをドラッグ</strong>すると、<strong>真下（縦）または右隣（横）へ連続コピー</strong>（オートフィル）されます。<br>
+              • <kbd class="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Ctrl+C</kbd> / <kbd class="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Ctrl+V</kbd> でのコピペも可能です。
+            </p>
+          </div>
+
+        </section>
+
+      </div>
+    </aside>
+
+    <!-- ==================== 右側：プレビューエリア ==================== -->
+    <div 
+      id="preview-area" 
+      onclick="handleBackgroundClick(event)"
+      class="flex-1 bg-slate-200 overflow-auto p-6 md:p-8 flex flex-col items-center relative"
+    >
+      
+      <!-- プレビューコントロールバー ＆ 案内ガイド -->
+      <div id="zoom-controls" class="no-print sticky top-0 mb-4 z-20 flex flex-col items-center gap-2" onclick="event.stopPropagation()">
+        <div class="flex items-center gap-2 bg-white/95 backdrop-blur px-3 py-1.5 rounded-full shadow-md border border-slate-300 text-xs text-slate-700">
+          <span class="font-semibold text-slate-500 flex items-center gap-1 pl-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            表示倍率:
+          </span>
+          <button id="zoom-btn-65" onclick="setZoom(0.65)" class="px-2.5 py-0.5 rounded hover:bg-slate-100 font-mono transition">65%</button>
+          <button id="zoom-btn-85" onclick="setZoom(0.85)" class="px-2.5 py-0.5 rounded hover:bg-slate-100 font-mono transition">85%</button>
+          <button id="zoom-btn-100" onclick="setZoom(1.0)" class="px-2.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold font-mono transition">100% (実寸)</button>
+          <div class="h-3 w-[1px] bg-slate-200 mx-0.5"></div>
+          <button onclick="fitToWidth()" class="px-2.5 py-0.5 rounded hover:bg-slate-100 text-indigo-700 font-semibold transition">画面幅に合わせる</button>
+        </div>
+
+        <!-- 案内ガイド -->
+        <div class="bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-[11px] font-medium px-4 py-1.5 rounded-full shadow-md flex items-center gap-2">
+          <svg class="w-3.5 h-3.5 text-amber-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+          </svg>
+          <span>✨ 枠をつかんでドラッグすると<strong>場所を移動</strong>！右下の青いポッチをドラッグすると<strong>連続コピー</strong>できます。</span>
+        </div>
+      </div>
+
+      <!-- A4 シート群の配置先コンテナ -->
+      <div id="preview-container" class="flex flex-col items-center gap-10 origin-top transition-transform duration-200">
+        <!-- JSで A4 シート ( .sheet ) を動的に生成 -->
+      </div>
+
+    </div>
+
+    <!-- トースト通知 -->
+    <div 
+      id="toast-notification" 
+      class="no-print fixed bottom-6 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none z-50 bg-slate-900/90 backdrop-blur text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-xl flex items-center gap-2 border border-slate-700/80 transition-all duration-200"
+    >
+      <span id="toast-icon">📋</span>
+      <span id="toast-message">コピーしました</span>
+    </div>
+
+    <!-- ==================== 履歴選択モーダル（大きく表示） ==================== -->
+    <div 
+      id="history-modal" 
+      class="no-print fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 transition-all duration-200 opacity-0"
+      onclick="handleModalBackdropClick(event)"
+    >
+      <div 
+        id="history-modal-card"
+        class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] transform scale-95 transition-transform duration-200"
+        onclick="event.stopPropagation()"
+      >
+        <!-- モーダルヘッダー -->
+        <div class="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80 flex-shrink-0">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-sm">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                <span>ラベル作成履歴から選ぶ</span>
+                <span id="modal-history-count" class="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold">0件</span>
+              </h3>
+              <p class="text-xs text-slate-500">クリックすると内容が左上の入力欄に自動で反映されます（重複なし）</p>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            onclick="closeHistoryModal()"
+            class="text-slate-400 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-200 transition"
+            title="閉じる"
+          >
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- 検索バー -->
+        <div class="p-3.5 border-b border-slate-100 bg-white flex-shrink-0">
+          <div class="relative">
+            <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input 
+              type="text" 
+              id="history-search-input" 
+              placeholder="商品名やシリーズ名で絞り込み..." 
+              oninput="filterHistoryList(this.value)"
+              class="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition"
+            >
+          </div>
+        </div>
+
+        <!-- 履歴カード一覧グリッド（大きく表示） -->
+        <div id="modal-history-grid" class="flex-1 overflow-y-auto p-5 grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-100/60">
+          <!-- JSで動的に追加 -->
+        </div>
+
+        <!-- モーダルフッター -->
+        <div class="px-6 py-3 border-t border-slate-200 flex items-center justify-between bg-slate-50 text-xs flex-shrink-0">
+          <button 
+            type="button" 
+            onclick="clearAllHistory()" 
+            class="text-slate-400 hover:text-red-600 transition font-medium"
+          >
+            履歴をすべて削除
+          </button>
+          <button 
+            type="button" 
+            onclick="closeHistoryModal()"
+            class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg shadow-sm transition"
+          >
+            閉じる
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ==================== JavaScript ロジック ==================== -->
+  <script>
+    /**
+     * 状態管理: labelData
+     * 各要素: { id, series, name, size, color }
+     */
+    let labelData = [];
+    let labelHistory = []; // ラベル作成履歴（重複なし）: { id, series, name, size, color, timestamp }
+    const HISTORY_STORAGE_KEY = 'aone_51467_label_history';
+
+    let currentFormat = '44'; // '44' または '10'
+    let showGuides = true;
+    let currentZoom = 1.0;
+    
+    // 選択状態
+    let selectedLabelId = null;   // 既存ラベルを選択中の場合のID
+    let selectedEmptySlot = null; // 白紙枠を選択中の場合のスロットインデックス（0-based）
+
+    // クリップボード（Ctrl+C / Ctrl+V用）
+    let internalClipboard = null;
+
+    // オートフィル（ドラッグコピー）状態
+    let isAutofilling = false;
+    let autofillSourceIndex = null;
+    let autofillTargetIndices = [];
+
+    // ドラッグ＆ドロップ場所移動（DnD）状態
+    let isDraggingLabel = false;
+    let dragSourceSlot = null;
+    let dragSourceItem = null;
+    let dragStartPos = { x: 0, y: 0 };
+    let hasMovedThreshold = false;
+    let dragGhostEl = null;
+    let currentDropTargetSlot = null;
+
+    // 履歴検索キーワード
+    let historyFilterQuery = '';
+
+    /**
+     * 用紙フォーマット仕様 (ミリメートル mm 単位)
+     */
+    const FORMAT_SPECS = {
+      '44': {
+        name: 'エーワン 51467（44面 48.3×25.4mm）',
+        cols: 4,
+        rows: 11,
+        perSheet: 44,
+        cardWidth: 48.3,
+        cardHeight: 25.4,
+        marginTop: 8.8,
+        marginLeft: 8.4,
+        gapX: 0,
+        gapY: 0,
+        type: 'label-44'
+      },
+      '10': {
+        name: '10面カード / 名刺サイズ（91 × 55mm）',
+        cols: 2,
+        rows: 5,
+        perSheet: 10,
+        cardWidth: 91.0,
+        cardHeight: 55.0,
+        marginTop: 11.0,
+        marginLeft: 14.0,
+        type: 'card-10'
+      }
+    };
+
+    /**
+     * 初期読み込み
+     */
+    window.addEventListener('DOMContentLoaded', () => {
+      loadHistoryFromStorage();
+      initSampleData();
+      render();
+      initKeyboardShortcuts();
+      initGlobalDragListeners();
+    });
+
+    /**
+     * ローカルストレージから履歴を読み込み
+     */
+    function loadHistoryFromStorage() {
+      try {
+        const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            labelHistory = parsed;
+          }
+        }
+      } catch (e) {
+        console.warn('履歴読み込み失敗:', e);
+      }
+    }
+
+    /**
+     * ローカルストレージへ履歴を保存
+     */
+    function saveHistoryToStorage() {
+      try {
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(labelHistory));
+      } catch (e) {
+        console.warn('履歴保存失敗:', e);
+      }
+    }
+
+    /**
+     * ★【完全重複排除】ラベルを履歴に追加（同じ内容のものは複数表示させない）
+     * - series, name, size, color の4項目が一致するものは1件のみ
+     * - 既に存在する場合は先頭（最新）に並び替え
+     * - 全項目が空欄のものは登録しない
+     */
+    function addLabelToHistory(item) {
+      if (!item) return;
+      const series = (item.series || '').trim();
+      const name = (item.name || '').trim();
+      const size = (item.size || '').trim();
+      const color = item.color || '#10b981';
+
+      // すべて空欄のものは履歴に追加しない
+      if (!series && !name && !size) return;
+
+      // 既存の重複ラベルを削除（大文字小文字の違いも正規化して比較）
+      labelHistory = labelHistory.filter(h => !(
+        (h.series || '').trim() === series &&
+        (h.name || '').trim() === name &&
+        (h.size || '').trim() === size &&
+        (h.color || '#10b981').toLowerCase() === color.toLowerCase()
+      ));
+
+      // 先頭に追加（最新）
+      labelHistory.unshift({
+        id: generateId(),
+        series,
+        name,
+        size,
+        color,
+        timestamp: Date.now()
+      });
+
+      // 最大保存件数（50件）
+      if (labelHistory.length > 50) {
+        labelHistory = labelHistory.slice(0, 50);
+      }
+
+      saveHistoryToStorage();
+      renderHistoryUI();
+    }
+
+    /**
+     * 日本語サンプルデータ
+     */
+    function initSampleData() {
+      const samples = [
+        { series: "ボタニカルリペア", name: "モイスチャーシャンプー", size: "300ml / ¥2,800", color: "#ec4899", qty: 6 },
+        { series: "ボタニカルリペア", name: "ディープトリートメント", size: "250g / ¥3,200", color: "#f97316", qty: 4 },
+        { series: "オーガニックケア", name: "シルキーヘアオイル", size: "100ml / ¥3,500", color: "#10b981", qty: 4 },
+        { series: "サロンプレミアム", name: "スカルプエッセンス", size: "120ml / ¥4,200", color: "#3b82f6", qty: 4 }
+      ];
+
+      labelData = [];
+      samples.forEach(s => {
+        for (let i = 0; i < s.qty; i++) {
+          labelData.push({
+            id: generateId(),
+            series: s.series,
+            name: s.name,
+            size: s.size,
+            color: s.color
+          });
+        }
+      });
+
+      // 履歴が空の場合は見本データを重複なしで初期投入
+      if (labelHistory.length === 0) {
+        samples.forEach(s => {
+          addLabelToHistory({
+            series: s.series,
+            name: s.name,
+            size: s.size,
+            color: s.color
+          });
+        });
+      }
+
+      deselectAndClear();
+    }
+
+    /**
+     * 見本データ再読込
+     */
+    function loadSampleData() {
+      initSampleData();
+      render();
+    }
+
+    /**
+     * ランダムID生成
+     */
+    function generateId() {
+      return '_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+    }
+
+    /**
+     * トースト通知の表示
+     */
+    let toastTimeout = null;
+    function showToast(icon, message) {
+      const toast = document.getElementById('toast-notification');
+      document.getElementById('toast-icon').textContent = icon;
+      document.getElementById('toast-message').textContent = message;
+
+      toast.classList.remove('opacity-0', 'pointer-events-none', '-translate-y-2');
+      toast.classList.add('opacity-100', 'translate-y-0');
+
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'pointer-events-none', '-translate-y-2');
+      }, 2000);
+    }
+
+    /**
+     * キーボードショートカット (Ctrl+C, Ctrl+V, Ctrl+D, Del)
+     */
+    function initKeyboardShortcuts() {
+      document.addEventListener('keydown', (e) => {
+        const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.isContentEditable);
+
+        // Ctrl+C (コピー)
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+          if (isInputFocused) return;
+          if (selectedLabelId) {
+            e.preventDefault();
+            copySelectedLabel();
+          }
+        }
+
+        // Ctrl+V (ペースト)
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+          if (isInputFocused) return;
+          if (internalClipboard) {
+            e.preventDefault();
+            pasteClipboardLabel();
+          }
+        }
+
+        // Ctrl+D (その場で複製)
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
+          if (isInputFocused) return;
+          if (selectedLabelId) {
+            e.preventDefault();
+            duplicateSelectedLabel();
+          }
+        }
+
+        // Delete または Backspace (選択中の枠を削除)
+        if ((e.key === 'Delete' || e.key === 'Backspace') && !isInputFocused) {
+          if (selectedLabelId) {
+            e.preventDefault();
+            removeSelectedLabel();
+          }
+        }
+      });
+    }
+
+    /**
+     * 選択中ラベルのコピー (Ctrl+C)
+     */
+    function copySelectedLabel() {
+      if (!selectedLabelId) return;
+      const item = labelData.find(d => d.id === selectedLabelId);
+      if (item) {
+        internalClipboard = {
+          series: item.series || '',
+          name: item.name || '',
+          size: item.size || '',
+          color: item.color || '#10b981'
+        };
+        showToast('📋', `「${item.name || '枠'}」をコピーしました（Ctrl+Vで貼り付け）`);
+      }
+    }
+
+    /**
+     * クリップボードの内容をペースト (Ctrl+V)
+     */
+    function pasteClipboardLabel() {
+      if (!internalClipboard) return;
+
+      const newLabel = {
+        id: generateId(),
+        series: internalClipboard.series,
+        name: internalClipboard.name,
+        size: internalClipboard.size,
+        color: internalClipboard.color
+      };
+
+      // ケース1: 白紙枠を選択中なら、その枠にペースト
+      if (selectedEmptySlot !== null) {
+        labelData[selectedEmptySlot] = newLabel;
+        render();
+        selectExistingLabel(newLabel.id);
+        showToast('📋', `枠 #${selectedEmptySlot + 1} に貼り付けました`);
+        return;
+      }
+
+      // ケース2: 既存枠を選択中なら、その枠を上書きペースト
+      if (selectedLabelId) {
+        const index = labelData.findIndex(d => d && d.id === selectedLabelId);
+        if (index !== -1) {
+          labelData[index] = newLabel;
+          render();
+          selectExistingLabel(newLabel.id);
+          showToast('📋', `枠 #${index + 1} に貼り付けました`);
+          return;
+        }
+      }
+
+      // ケース3: 枠未選択なら、先頭の空き枠を探して貼り付け
+      let targetSlot = 0;
+      while (labelData[targetSlot]) {
+        targetSlot++;
+      }
+      labelData[targetSlot] = newLabel;
+      render();
+      selectExistingLabel(newLabel.id);
+      showToast('📋', `枠 #${targetSlot + 1} に貼り付けました`);
+    }
+
+    /**
+     * 【既存ラベル枠をクリックした時】
+     */
+    function selectExistingLabel(id) {
+      selectedLabelId = id;
+      selectedEmptySlot = null;
+
+      const item = labelData.find(d => d && d.id === id);
+      if (!item) return;
+
+      const itemIndex = labelData.findIndex(d => d && d.id === id);
+
+      // 左上のフォームに入力値をセット
+      document.getElementById('input-series').value = item.series || '';
+      document.getElementById('input-name').value = item.name || '';
+      document.getElementById('input-size').value = item.size || '';
+      document.getElementById('input-color').value = item.color || '#10b981';
+      document.getElementById('color-hex-label').textContent = (item.color || '#10B981').toUpperCase();
+
+      // UIを「枠 #○ を編集中」にする
+      document.getElementById('form-section').classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-50/20');
+      document.getElementById('form-section').classList.remove('bg-slate-50');
+
+      document.getElementById('form-mode-icon').className = 'w-2.5 h-2.5 rounded-full bg-indigo-600 animate-ping';
+      document.getElementById('form-mode-title').textContent = `枠 #${itemIndex + 1} を編集中`;
+      document.getElementById('form-mode-title').className = 'text-xs font-bold uppercase tracking-wider text-indigo-700';
+
+      document.getElementById('selected-badge-container').classList.remove('hidden');
+      document.getElementById('selected-badge-text').textContent = `枠 #${itemIndex + 1} を編集中（${item.name || '文字なし'}）`;
+
+      document.getElementById('qty-field-container').classList.add('opacity-40', 'pointer-events-none');
+      document.getElementById('btn-form-main-text').textContent = '編集を確定する';
+      document.getElementById('btn-form-main').className = 'w-full py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 active:scale-[0.99] text-white font-bold text-sm rounded-lg shadow-sm flex items-center justify-center gap-2 transition duration-150';
+
+      document.getElementById('edit-sub-buttons').classList.remove('hidden');
+      document.getElementById('edit-sub-buttons').classList.add('grid');
+
+      updateSelectionHighlight();
+      scrollToFormTop();
+    }
+
+    /**
+     * 【白紙の場所をクリックした時】
+     */
+    function selectEmptySlot(slotIndex) {
+      selectedLabelId = null;
+      selectedEmptySlot = slotIndex;
+
+      document.getElementById('input-series').value = '';
+      document.getElementById('input-name').value = '';
+      document.getElementById('input-size').value = '';
+      
+      document.getElementById('form-section').classList.add('ring-2', 'ring-indigo-400', 'bg-indigo-50/20');
+      document.getElementById('form-section').classList.remove('bg-slate-50');
+
+      document.getElementById('form-mode-icon').className = 'w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse';
+      document.getElementById('form-mode-title').textContent = `枠 #${slotIndex + 1}（白紙）に作成`;
+      document.getElementById('form-mode-title').className = 'text-xs font-bold uppercase tracking-wider text-indigo-700';
+
+      document.getElementById('selected-badge-container').classList.remove('hidden');
+      document.getElementById('selected-badge-text').textContent = `枠 #${slotIndex + 1} を選択中（白紙）`;
+
+      document.getElementById('qty-field-container').classList.add('opacity-40', 'pointer-events-none');
+      document.getElementById('btn-form-main-text').textContent = `枠 #${slotIndex + 1} に追加する`;
+      document.getElementById('btn-form-main').className = 'w-full py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 active:scale-[0.99] text-white font-bold text-sm rounded-lg shadow-sm flex items-center justify-center gap-2 transition duration-150';
+
+      document.getElementById('edit-sub-buttons').classList.add('hidden');
+      document.getElementById('edit-sub-buttons').classList.remove('grid');
+
+      updateSelectionHighlight();
+      scrollToFormTop();
+
+      setTimeout(() => {
+        document.getElementById('input-name').focus();
+      }, 50);
+    }
+
+    /**
+     * 【選択解除 ＆ 欄クリア】
+     */
+    function deselectAndClear() {
+      selectedLabelId = null;
+      selectedEmptySlot = null;
+
+      document.getElementById('input-series').value = '';
+      document.getElementById('input-name').value = '';
+      document.getElementById('input-size').value = '';
+
+      document.getElementById('form-section').classList.remove('ring-2', 'ring-indigo-500', 'ring-indigo-400', 'bg-indigo-50/20');
+      document.getElementById('form-section').classList.add('bg-slate-50');
+
+      document.getElementById('form-mode-icon').className = 'w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse';
+      document.getElementById('form-mode-title').textContent = '新規ラベルの追加';
+      document.getElementById('form-mode-title').className = 'text-xs font-bold uppercase tracking-wider text-slate-700';
+
+      document.getElementById('selected-badge-container').classList.add('hidden');
+      document.getElementById('qty-field-container').classList.remove('opacity-40', 'pointer-events-none');
+
+      document.getElementById('btn-form-main-text').textContent = 'シートに追加する';
+      document.getElementById('btn-form-main').className = 'w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-bold text-sm rounded-lg shadow-sm flex items-center justify-center gap-2 transition duration-150';
+
+      document.getElementById('edit-sub-buttons').classList.add('hidden');
+      document.getElementById('edit-sub-buttons').classList.remove('grid');
+
+      updateSelectionHighlight();
+    }
+
+    /**
+     * 「欄を空にする」ボタン
+     */
+    function clearFormToEmpty() {
+      deselectAndClear();
+    }
+
+    /**
+     * プレビュー外枠の背景クリック時
+     */
+    function handleBackgroundClick(e) {
+      if (isAutofilling) return;
+      if (e.target.id === 'preview-area' || e.target.id === 'preview-container' || e.target.classList.contains('sheet-wrapper')) {
+        deselectAndClear();
+      }
+    }
+
+    /**
+     * 左上のフォーム入力内容をリアルタイムに反映
+     */
+    function handleFormLiveUpdate() {
+      const series = document.getElementById('input-series').value;
+      const name = document.getElementById('input-name').value;
+      const size = document.getElementById('input-size').value;
+      const color = document.getElementById('input-color').value;
+
+      if (selectedLabelId) {
+        const item = labelData.find(d => d && d.id === selectedLabelId);
+        if (item) {
+          item.series = series;
+          item.name = name;
+          item.size = size;
+          item.color = color;
+          updateSingleCellDOM(item);
+        }
+        return;
+      }
+
+      if (selectedEmptySlot !== null) {
+        if (!labelData[selectedEmptySlot]) {
+          labelData[selectedEmptySlot] = {
+            id: generateId(),
+            series: series,
+            name: name,
+            size: size,
+            color: color
+          };
+          selectedLabelId = labelData[selectedEmptySlot].id;
+          selectedEmptySlot = null;
+          render();
+        } else {
+          const item = labelData[selectedEmptySlot];
+          item.series = series;
+          item.name = name;
+          item.size = size;
+          item.color = color;
+          updateSingleCellDOM(item);
+        }
+      }
+    }
+
+    /**
+     * カラーピッカー変更時の処理
+     */
+    function handleColorPickerInput(hex) {
+      document.getElementById('color-hex-label').textContent = hex.toUpperCase();
+      handleFormLiveUpdate();
+    }
+
+    /**
+     * クイックカラー選択
+     */
+    function setQuickColor(hex) {
+      const picker = document.getElementById('input-color');
+      picker.value = hex;
+      document.getElementById('color-hex-label').textContent = hex.toUpperCase();
+      handleFormLiveUpdate();
+    }
+
+    /**
+     * 単一セルのDOMのみ差分更新
+     */
+    function updateSingleCellDOM(item) {
+      const cell = document.querySelector(`[data-cell-id="${item.id}"]`);
+      if (cell) {
+        if (currentFormat === '44') {
+          cell.innerHTML = buildFormat44HTML(item);
+        } else {
+          cell.innerHTML = buildFormat10HTML(item);
+        }
+        const slotIndex = labelData.findIndex(d => d && d.id === item.id);
+        if (slotIndex !== -1) {
+          attachSelectionDecorations(cell, slotIndex + 1, false, slotIndex);
+        }
+      }
+    }
+
+    /**
+     * フォーム送信処理（追加または確定）
+     */
+    function handleFormSubmit(e) {
+      e.preventDefault();
+
+      const seriesInput = document.getElementById('input-series');
+      const nameInput = document.getElementById('input-name');
+      const sizeInput = document.getElementById('input-size');
+      const colorInput = document.getElementById('input-color');
+      const qtyInput = document.getElementById('input-qty');
+
+      const series = seriesInput.value.trim();
+      const name = nameInput.value.trim();
+      const size = sizeInput.value.trim();
+      const color = colorInput.value || '#10b981';
+
+      // 編集確定モードの場合
+      if (selectedLabelId) {
+        addLabelToHistory({ series, name, size, color });
+        deselectAndClear();
+        showToast('✨', '枠の編集を確定しました');
+        return;
+      }
+
+      // 白紙枠への作成モードの場合
+      if (selectedEmptySlot !== null) {
+        const newLabel = {
+          id: generateId(),
+          series,
+          name,
+          size,
+          color
+        };
+        labelData[selectedEmptySlot] = newLabel;
+        addLabelToHistory(newLabel);
+        deselectAndClear();
+        render();
+        showToast('✨', `枠 #${selectedEmptySlot + 1} に追加しました`);
+        return;
+      }
+
+      // 新規追加モード（指定枚数分）
+      const qty = parseInt(qtyInput.value, 10) || 1;
+      let targetSlot = 0;
+      for (let i = 0; i < qty; i++) {
+        while (labelData[targetSlot]) {
+          targetSlot++;
+        }
+        labelData[targetSlot] = {
+          id: generateId(),
+          series,
+          name,
+          size,
+          color
+        };
+        targetSlot++;
+      }
+
+      // 履歴に登録（同じ内容のものは1件に重複排除）
+      addLabelToHistory({ series, name, size, color });
+
+      deselectAndClear();
+      render();
+      showToast('✨', `${qty}枚のラベルを追加しました`);
+    }
+
+    /**
+     * 選択中ラベルの複製
+     */
+    function duplicateSelectedLabel() {
+      if (!selectedLabelId) return;
+      const index = labelData.findIndex(d => d && d.id === selectedLabelId);
+      if (index !== -1) {
+        const item = labelData[index];
+        const newItem = {
+          id: generateId(),
+          series: item.series || '',
+          name: item.name || '',
+          size: item.size || '',
+          color: item.color || '#10b981'
+        };
+        let nextSlot = index + 1;
+        while (labelData[nextSlot]) {
+          nextSlot++;
+        }
+        labelData[nextSlot] = newItem;
+        render();
+        selectExistingLabel(newItem.id);
+        showToast('✨', '枠を複製しました');
+      }
+    }
+
+    /**
+     * 選択中ラベルの削除
+     */
+    function removeSelectedLabel() {
+      if (!selectedLabelId) return;
+      const index = labelData.findIndex(item => item && item.id === selectedLabelId);
+      if (index !== -1) {
+        labelData[index] = null;
+        while (labelData.length > 0 && !labelData[labelData.length - 1]) {
+          labelData.pop();
+        }
+      }
+      deselectAndClear();
+      render();
+      showToast('🗑️', '枠を削除しました');
+    }
+
+    /**
+     * 単一ラベル削除
+     */
+    function removeLabel(id, event) {
+      if (event) event.stopPropagation();
+      const index = labelData.findIndex(item => item && item.id === id);
+      if (index !== -1) {
+        labelData[index] = null;
+        while (labelData.length > 0 && !labelData[labelData.length - 1]) {
+          labelData.pop();
+        }
+      }
+      if (selectedLabelId === id) {
+        deselectAndClear();
+      }
+      render();
+    }
+
+    /**
+     * 全消去
+     */
+    function clearAllLabels() {
+      if (labelData.length === 0) return;
+      if (confirm('登録されているすべてのラベルを削除しますか？')) {
+        labelData = [];
+        deselectAndClear();
+        render();
+      }
+    }
+
+    /**
+     * 用紙選択変更
+     */
+    function handleFormatChange(val) {
+      currentFormat = val;
+      const infoTag = document.getElementById('format-info-tag');
+      if (val === '44') {
+        infoTag.textContent = 'エーワン 51467（44面）';
+      } else {
+        infoTag.textContent = '1枚に 10面';
+      }
+      deselectAndClear();
+      render();
+    }
+
+    /**
+     * ガイド線トグル
+     */
+    function toggleGuides(checked) {
+      showGuides = checked;
+      const previewContainer = document.getElementById('preview-container');
+      if (checked) {
+        previewContainer.classList.add('show-guides');
+      } else {
+        previewContainer.classList.remove('show-guides');
+      }
+    }
+
+    /**
+     * 画面再描画
+     */
+    function render() {
+      renderHistoryUI();
+      renderSheets();
+      updateBadges();
+      toggleGuides(showGuides);
+      updateSelectionHighlight();
+    }
+
+    /**
+     * 【オートフィル】右下ドラッグ開始
+     */
+    function startAutofill(e, slotIndex) {
+      e.stopPropagation();
+      e.preventDefault();
+
+      isAutofilling = true;
+      autofillSourceIndex = slotIndex;
+      autofillTargetIndices = [];
+
+      document.body.classList.add('cursor-crosshair');
+    }
+
+    /**
+     * 【枠のドラッグ移動】開始
+     */
+    function startLabelDrag(e, slotIndex, item) {
+      if (isAutofilling) return;
+
+      // フィルハンドル等をクリックした場合は除外
+      if (e.target.closest('.fill-handle')) return;
+
+      dragSourceSlot = slotIndex;
+      dragSourceItem = item;
+      dragStartPos = { x: e.clientX, y: e.clientY };
+      hasMovedThreshold = false;
+      currentDropTargetSlot = null;
+    }
+
+    /**
+     * 座標から最も適したセルを特定するユーティリティ
+     */
+    function findCellUnderPoint(x, y) {
+      const element = document.elementFromPoint(x, y);
+      let cell = element ? element.closest('.label-cell') : null;
+
+      if (!cell) {
+        let closestDist = Infinity;
+        document.querySelectorAll('.label-cell').forEach(c => {
+          const rect = c.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const dist = Math.hypot(x - cx, y - cy);
+          if (dist < closestDist && dist < 120) {
+            closestDist = dist;
+            cell = c;
+          }
+        });
+      }
+      return cell;
+    }
+
+    /**
+     * ドラッグゴースト要素の生成
+     */
+    function createDragGhost(e, item) {
+      if (dragGhostEl) dragGhostEl.remove();
+
+      const spec = FORMAT_SPECS[currentFormat];
+      dragGhostEl = document.createElement('div');
+      dragGhostEl.className = 'label-drag-ghost no-print';
+
+      const widthPx = Math.round(spec.cardWidth * 3.78);
+      const heightPx = Math.round(spec.cardHeight * 3.78);
+      dragGhostEl.style.width = `${widthPx}px`;
+      dragGhostEl.style.height = `${heightPx}px`;
+      dragGhostEl.style.left = `${e.clientX}px`;
+      dragGhostEl.style.top = `${e.clientY}px`;
+
+      if (currentFormat === '44') {
+        dragGhostEl.innerHTML = buildFormat44HTML(item);
+      } else {
+        dragGhostEl.innerHTML = buildFormat10HTML(item);
+      }
+
+      const moveBadge = document.createElement('div');
+      moveBadge.className = 'absolute -top-3 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md border border-white/40 whitespace-nowrap flex items-center gap-1';
+      moveBadge.innerHTML = '<span>📍</span><span>移動中</span>';
+      dragGhostEl.appendChild(moveBadge);
+
+      document.body.appendChild(dragGhostEl);
+    }
+
+    /**
+     * ドロップ候補のバッジ
+     */
+    function attachDropBadge(cell, text) {
+      const badge = document.createElement('div');
+      badge.className = 'drop-indicator-badge no-print absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-900/90 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-lg border border-white/30 whitespace-nowrap pointer-events-none z-50 animate-bounce';
+      badge.textContent = text;
+      cell.appendChild(badge);
+    }
+
+    /**
+     * ドラッグ移動のクリーンアップ
+     */
+    function cleanupDragMove() {
+      isDraggingLabel = false;
+      dragSourceSlot = null;
+      dragSourceItem = null;
+      currentDropTargetSlot = null;
+      hasMovedThreshold = false;
+
+      if (dragGhostEl) {
+        dragGhostEl.remove();
+        dragGhostEl = null;
+      }
+
+      document.body.classList.remove('cursor-grabbing');
+
+      document.querySelectorAll('.label-cell').forEach(cell => {
+        cell.classList.remove('dragging-source', 'drop-target', 'drop-target-swap');
+        const badge = cell.querySelector('.drop-indicator-badge');
+        if (badge) badge.remove();
+      });
+    }
+
+    /**
+     * ラベルの移動・入れ替え実行
+     */
+    function executeLabelMove(sourceSlot, targetSlot) {
+      const sourceItem = labelData[sourceSlot];
+      if (!sourceItem) return;
+
+      const targetItem = labelData[targetSlot] || null;
+
+      if (!targetItem) {
+        labelData[targetSlot] = sourceItem;
+        labelData[sourceSlot] = null;
+        showToast('📍', `枠 #${sourceSlot + 1} から 枠 #${targetSlot + 1} へ移動しました！`);
+      } else {
+        labelData[targetSlot] = sourceItem;
+        labelData[sourceSlot] = targetItem;
+        showToast('↔️', `枠 #${sourceSlot + 1} と 枠 #${targetSlot + 1} を入れ替えました！`);
+      }
+
+      while (labelData.length > 0 && !labelData[labelData.length - 1]) {
+        labelData.pop();
+      }
+
+      render();
+      selectExistingLabel(sourceItem.id);
+    }
+
+    /**
+     * グローバルマウスイベント（縦・横のみのオートフィル ＆ ラベル移動DnD）
+     */
+    function initGlobalDragListeners() {
+      window.addEventListener('mousemove', (e) => {
+        // --- 1. オートフィル（連続コピー）中の場合 ---
+        if (isAutofilling && autofillSourceIndex !== null) {
+          const cell = findCellUnderPoint(e.clientX, e.clientY);
+          if (cell && cell.hasAttribute('data-slot-num')) {
+            const currentTargetIndex = parseInt(cell.getAttribute('data-slot-num'), 10);
+            updateAutofillRange(autofillSourceIndex, currentTargetIndex);
+          }
+          return;
+        }
+
+        // --- 2. ラベルのドラッグ移動処理 ---
+        if (dragSourceSlot !== null && dragSourceItem) {
+          if (!hasMovedThreshold) {
+            const dist = Math.hypot(e.clientX - dragStartPos.x, e.clientY - dragStartPos.y);
+            if (dist >= 6) {
+              hasMovedThreshold = true;
+              isDraggingLabel = true;
+              document.body.classList.add('cursor-grabbing');
+
+              const sourceCell = document.querySelector(`[data-slot-num="${dragSourceSlot}"]`);
+              if (sourceCell) {
+                sourceCell.classList.add('dragging-source');
+              }
+
+              createDragGhost(e, dragSourceItem);
+            }
+          }
+
+          if (hasMovedThreshold && dragGhostEl) {
+            dragGhostEl.style.left = `${e.clientX}px`;
+            dragGhostEl.style.top = `${e.clientY}px`;
+
+            const targetCell = findCellUnderPoint(e.clientX, e.clientY);
+            
+            document.querySelectorAll('.label-cell.drop-target, .label-cell.drop-target-swap').forEach(el => {
+              el.classList.remove('drop-target', 'drop-target-swap');
+              const badge = el.querySelector('.drop-indicator-badge');
+              if (badge) badge.remove();
+            });
+
+            if (targetCell && targetCell.hasAttribute('data-slot-num')) {
+              const targetSlot = parseInt(targetCell.getAttribute('data-slot-num'), 10);
+              if (targetSlot !== dragSourceSlot) {
+                currentDropTargetSlot = targetSlot;
+                const isSwap = Boolean(labelData[targetSlot]);
+
+                if (isSwap) {
+                  targetCell.classList.add('drop-target-swap');
+                  attachDropBadge(targetCell, '↔️ 入れ替え');
+                } else {
+                  targetCell.classList.add('drop-target');
+                  attachDropBadge(targetCell, '📍 ここへ移動');
+                }
+              } else {
+                currentDropTargetSlot = null;
+              }
+            } else {
+              currentDropTargetSlot = null;
+            }
+          }
+        }
+      });
+
+      window.addEventListener('mouseup', () => {
+        // --- 1. オートフィル終了 ---
+        if (isAutofilling) {
+          isAutofilling = false;
+          document.body.classList.remove('cursor-crosshair');
+
+          if (autofillSourceIndex !== null && autofillTargetIndices.length > 0) {
+            applyAutofillCopy(autofillSourceIndex, autofillTargetIndices);
+          }
+
+          document.querySelectorAll('.label-cell.autofill-target').forEach(el => {
+            el.classList.remove('autofill-target');
+          });
+
+          autofillSourceIndex = null;
+          autofillTargetIndices = [];
+          return;
+        }
+
+        // --- 2. ラベルのドラッグ移動終了 ---
+        if (dragSourceSlot !== null) {
+          const sourceSlot = dragSourceSlot;
+          const sourceItem = dragSourceItem;
+          const moved = hasMovedThreshold;
+          const targetSlot = currentDropTargetSlot;
+
+          cleanupDragMove();
+
+          if (!moved) {
+            selectExistingLabel(sourceItem.id);
+          } else {
+            if (targetSlot !== null && targetSlot !== sourceSlot) {
+              executeLabelMove(sourceSlot, targetSlot);
+            }
+          }
+        }
+      });
+    }
+
+    /**
+     * ★【縦と横のみのオートフィル範囲計算】
+     * - 下/上にドラッグ: その真下/真上の欄に1つずつコピー（同じ列のみ、縦一直線）
+     * - 右/左にドラッグ: その右隣/左隣の欄に1つずつコピー（同じ行のみ、横一直線）
+     * - 斜めには決して広がらず、移動量の大きい軸（縦または横）に限定！
+     */
+    function updateAutofillRange(fromIndex, toIndex) {
+      autofillTargetIndices = [];
+      const spec = FORMAT_SPECS[currentFormat];
+
+      const fromCol = fromIndex % spec.cols;
+      const fromRow = Math.floor(fromIndex / spec.cols);
+      const toCol = toIndex % spec.cols;
+      const toRow = Math.floor(toIndex / spec.cols);
+
+      const deltaRow = toRow - fromRow;
+      const deltaCol = toCol - fromCol;
+
+      // 自スロットなら対象なし
+      if (deltaRow === 0 && deltaCol === 0) {
+        document.querySelectorAll('.label-cell.autofill-target').forEach(el => el.classList.remove('autofill-target'));
+        return;
+      }
+
+      // 縦方向か横方向かの判定（移動量が大きい軸を採用。等しければ縦を優先）
+      if (Math.abs(deltaRow) >= Math.abs(deltaCol)) {
+        // ★【縦方向のみ（同じ列）】
+        // 下または上にドラッグした場合、同じ列の真下・真上の枠だけを1つずつ選択
+        const step = deltaRow > 0 ? 1 : -1;
+        for (let r = fromRow + step; deltaRow > 0 ? r <= toRow : r >= toRow; r += step) {
+          const slot = r * spec.cols + fromCol;
+          if (slot >= 0) {
+            autofillTargetIndices.push(slot);
+          }
+        }
+      } else {
+        // ★【横方向のみ（同じ行）】
+        // 右または左にドラッグした場合、同じ行の右隣・左隣の枠だけを1つずつ選択
+        const step = deltaCol > 0 ? 1 : -1;
+        for (let c = fromCol + step; deltaCol > 0 ? c <= toCol : c >= toCol; c += step) {
+          const slot = fromRow * spec.cols + c;
+          if (slot >= 0) {
+            autofillTargetIndices.push(slot);
+          }
+        }
+      }
+
+      // ハイライト表示の更新
+      const targetSet = new Set(autofillTargetIndices);
+      document.querySelectorAll('.label-cell').forEach(cell => {
+        const slot = parseInt(cell.getAttribute('data-slot-num'), 10);
+        if (targetSet.has(slot)) {
+          cell.classList.add('autofill-target');
+        } else {
+          cell.classList.remove('autofill-target');
+        }
+      });
+    }
+
+    /**
+     * オートフィルのコピー確定（縦または横の対象枠へピンポイントコピー）
+     */
+    function applyAutofillCopy(sourceIndex, targetIndices) {
+      if (targetIndices.length === 0) return;
+
+      const sourceItem = (sourceIndex < labelData.length && labelData[sourceIndex]) ? labelData[sourceIndex] : {
+        series: '',
+        name: '',
+        size: '',
+        color: '#10b981'
+      };
+
+      // 対象枠へコピー（間の白紙枠は完全な白紙のまま触らない）
+      targetIndices.forEach(targetSlot => {
+        labelData[targetSlot] = {
+          id: generateId(),
+          series: sourceItem.series || '',
+          name: sourceItem.name || '',
+          size: sourceItem.size || '',
+          color: sourceItem.color || '#10b981'
+        };
+      });
+
+      render();
+      showToast('✨', `${targetIndices.length}個の枠へコピーしました！`);
+    }
+
+    /**
+     * 選択中セルに上部バッジ ＆ 右下フィルハンドルを付与
+     */
+    function attachSelectionDecorations(cell, slotNum, isBlank, slotIndex) {
+      cell.querySelectorAll('.selected-floating-badge, .fill-handle').forEach(el => el.remove());
+
+      // 頭上のエレガントなグラデーションピルバッジ
+      const badge = document.createElement('div');
+      badge.className = 'selected-floating-badge no-print';
+      badge.innerHTML = `
+        <span class="w-1.5 h-1.5 rounded-full ${isBlank ? 'bg-amber-300' : 'bg-pink-300'} animate-ping"></span>
+        <span>${isBlank ? `✏️ 枠 ${slotNum}（白紙）` : `✨ 枠 ${slotNum} を編集中`}</span>
+      `;
+      cell.appendChild(badge);
+
+      // 右下のオートフィルハンドル（ドラッグして連続コピー）
+      const handle = document.createElement('div');
+      handle.className = 'fill-handle no-print';
+      handle.title = 'ドラッグして真下または右隣へコピー（オートフィル）';
+      handle.onmousedown = (e) => startAutofill(e, slotIndex);
+      cell.appendChild(handle);
+    }
+
+    /**
+     * 選択セルのハイライト表示を更新
+     */
+    function updateSelectionHighlight() {
+      document.querySelectorAll('.label-cell').forEach(cell => {
+        cell.classList.remove('selected-cell');
+        cell.querySelectorAll('.selected-floating-badge, .fill-handle').forEach(el => el.remove());
+      });
+
+      if (selectedLabelId) {
+        const selectedCell = document.querySelector(`[data-cell-id="${selectedLabelId}"]`);
+        if (selectedCell) {
+          selectedCell.classList.add('selected-cell');
+          const slotIndex = labelData.findIndex(d => d && d.id === selectedLabelId);
+          if (slotIndex !== -1) {
+            attachSelectionDecorations(selectedCell, slotIndex + 1, false, slotIndex);
+          }
+        }
+      } else if (selectedEmptySlot !== null) {
+        const emptyCell = document.querySelector(`[data-empty-slot="${selectedEmptySlot}"]`);
+        if (emptyCell) {
+          emptyCell.classList.add('selected-cell');
+          attachSelectionDecorations(emptyCell, selectedEmptySlot + 1, true, selectedEmptySlot);
+        }
+      }
+    }
+
+    /**
+     * 左側操作パネルの上部へスクロール
+     */
+    function scrollToFormTop() {
+      const panel = document.querySelector('aside .overflow-y-auto');
+      if (panel) panel.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    /**
+     * 枚数カウンター ＆ 履歴カウンター更新
+     */
+    function updateBadges() {
+      const spec = FORMAT_SPECS[currentFormat];
+      let activeCount = 0;
+      let maxSlot = -1;
+
+      for (let i = 0; i < labelData.length; i++) {
+        if (labelData[i]) {
+          activeCount++;
+          maxSlot = i;
+        }
+      }
+
+      const totalSheets = Math.max(1, Math.ceil((maxSlot + 1) / spec.perSheet));
+
+      const totalItemsEl = document.getElementById('badge-total-items');
+      if (totalItemsEl) totalItemsEl.textContent = activeCount;
+
+      const totalSheetsEl = document.getElementById('badge-total-sheets');
+      if (totalSheetsEl) totalSheetsEl.textContent = totalSheets;
+
+      const clearBtn = document.getElementById('btn-clear-all');
+      if (clearBtn) clearBtn.disabled = activeCount === 0;
+
+      // 履歴件数バッジの更新
+      const historyBadge = document.getElementById('history-count-badge');
+      if (historyBadge) historyBadge.textContent = `${labelHistory.length}件`;
+
+      const modalHistoryBadge = document.getElementById('modal-history-count');
+      if (modalHistoryBadge) modalHistoryBadge.textContent = `${labelHistory.length}件`;
+    }
+
+    /**
+     * ★【選ばれたら左上に入る】履歴アイテムを選択して左上入力欄にセット
+     * - シリーズ名、商品名、サイズ・価格、カラーを即時反映
+     * - もし枠を選択中ならその枠にもライブ反映
+     * - モーダルを自動で閉じて左上フォームを光らせる
+     */
+    function applyHistoryToForm(item) {
+      if (!item) return;
+
+      // 1. 左上のフォームに値を反映
+      document.getElementById('input-series').value = item.series || '';
+      document.getElementById('input-name').value = item.name || '';
+      document.getElementById('input-size').value = item.size || '';
+      
+      const itemColor = item.color || '#10b981';
+      document.getElementById('input-color').value = itemColor;
+      document.getElementById('color-hex-label').textContent = itemColor.toUpperCase();
+
+      // 2. もし特定の枠を選択中なら、その枠のDOMも即時更新
+      handleFormLiveUpdate();
+
+      // 3. モーダルが開いていればスムーズに閉じる
+      closeHistoryModal();
+
+      // 4. 左上のフォームエリアへスクロール
+      scrollToFormTop();
+
+      // 5. 「左上に入った！」ことを視覚的に知らせるリング点滅アニメーション
+      const formSection = document.getElementById('form-section');
+      if (formSection) {
+        formSection.classList.remove('ring-emerald-400', 'ring-indigo-500');
+        formSection.classList.add('ring-4', 'ring-emerald-400', 'bg-emerald-50/40', 'transition-all');
+        setTimeout(() => {
+          formSection.classList.remove('ring-4', 'ring-emerald-400', 'bg-emerald-50/40');
+          if (selectedLabelId || selectedEmptySlot !== null) {
+            formSection.classList.add('ring-2', 'ring-indigo-500');
+          }
+        }, 700);
+      }
+
+      showToast('📥', `「${item.name || item.series || 'ラベル'}」を入力欄に反映しました`);
+    }
+
+    /**
+     * 履歴モーダルを開く（大きく表示）
+     */
+    function openHistoryModal() {
+      const modal = document.getElementById('history-modal');
+      const card = document.getElementById('history-modal-card');
+      const searchInput = document.getElementById('history-search-input');
+
+      historyFilterQuery = '';
+      if (searchInput) searchInput.value = '';
+
+      renderHistoryModalGrid('');
+
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      
+      requestAnimationFrame(() => {
+        modal.classList.remove('opacity-0');
+        modal.classList.add('opacity-100');
+        card.classList.remove('scale-95');
+        card.classList.add('scale-100');
+      });
+
+      if (searchInput) {
+        setTimeout(() => searchInput.focus(), 150);
+      }
+    }
+
+    /**
+     * 履歴モーダルを閉じる
+     */
+    function closeHistoryModal() {
+      const modal = document.getElementById('history-modal');
+      const card = document.getElementById('history-modal-card');
+      if (!modal || modal.classList.contains('hidden')) return;
+
+      modal.classList.remove('opacity-100');
+      modal.classList.add('opacity-0');
+      card.classList.remove('scale-100');
+      card.classList.add('scale-95');
+
+      setTimeout(() => {
+        modal.classList.remove('flex');
+        modal.classList.add('hidden');
+      }, 200);
+    }
+
+    /**
+     * モーダルの背景クリックで閉じる
+     */
+    function handleModalBackdropClick(e) {
+      if (e.target.id === 'history-modal') {
+        closeHistoryModal();
+      }
+    }
+
+    /**
+     * 履歴の検索フィルター
+     */
+    function filterHistoryList(query) {
+      historyFilterQuery = (query || '').trim().toLowerCase();
+      renderHistoryModalGrid(historyFilterQuery);
+    }
+
+    /**
+     * 履歴から1件削除
+     */
+    function deleteHistoryItem(id, event) {
+      if (event) event.stopPropagation();
+      labelHistory = labelHistory.filter(h => h.id !== id);
+      saveHistoryToStorage();
+      renderHistoryUI();
+      showToast('🗑️', '履歴を1件削除しました');
+    }
+
+    /**
+     * 履歴を全消去
+     */
+    function clearAllHistory() {
+      if (labelHistory.length === 0) return;
+      if (confirm('保存されているすべてのラベル履歴を削除しますか？')) {
+        labelHistory = [];
+        saveHistoryToStorage();
+        renderHistoryUI();
+        showToast('🗑️', 'すべての履歴を削除しました');
+      }
+    }
+
+    /**
+     * 履歴関連UIの総合再描画
+     */
+    function renderHistoryUI() {
+      renderRecentHistoryList();
+      renderHistoryModalGrid(historyFilterQuery);
+      updateBadges();
+    }
+
+    /**
+     * 左パネル：直近のラベル履歴（重複なし）の描画
+     */
+    function renderRecentHistoryList() {
+      const container = document.getElementById('recent-history-container');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (labelHistory.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-6 px-3 bg-slate-50/80 rounded-lg border border-dashed border-slate-200">
+            <svg class="w-6 h-6 mx-auto text-slate-300 mb-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p class="text-xs text-slate-500 font-bold">作成履歴はまだありません</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">上のフォームから作成すると重複なしで自動保存されます</p>
+          </div>
+        `;
+        return;
+      }
+
+      // 直近最大6件を左パネルに表示
+      const displayItems = labelHistory.slice(0, 6);
+
+      displayItems.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = 'group flex items-center justify-between p-2 rounded-lg bg-white hover:bg-indigo-50/80 border border-slate-200/90 hover:border-indigo-300 shadow-2xs hover:shadow-xs transition-all text-xs cursor-pointer select-none';
+        row.title = 'クリックすると内容が左上の入力欄に入ります';
+        
+        row.onclick = () => applyHistoryToForm(item);
+
+        const displayName = item.name ? escapeHtml(item.name) : '<span class="text-slate-400 italic">（文字なし）</span>';
+        const displaySeries = item.series ? escapeHtml(item.series) : '<span class="text-slate-400">指定なし</span>';
+
+        row.innerHTML = `
+          <div class="flex items-center gap-2.5 overflow-hidden pr-2 flex-1 min-w-0">
+            <span 
+              class="w-3.5 h-3.5 rounded-full flex-shrink-0 shadow-2xs border border-white" 
+              style="background-color: ${escapeHtml(item.color || '#10b981')}"
+            ></span>
+            <div class="truncate flex-1 min-w-0">
+              <div class="font-bold text-slate-800 truncate">${displayName}</div>
+              <div class="text-[10px] text-slate-500 truncate flex items-center gap-1.5">
+                <span>${displaySeries}</span>
+                ${item.size ? `<span class="text-slate-300">•</span><span>${escapeHtml(item.size)}</span>` : ''}
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 flex-shrink-0">
+            <span class="text-[10px] text-indigo-600 font-bold px-1.5 py-0.5 rounded bg-indigo-50 opacity-0 group-hover:opacity-100 transition whitespace-nowrap">
+              入力 ↵
+            </span>
+            <button 
+              type="button" 
+              onclick="deleteHistoryItem('${item.id}', event)"
+              class="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition opacity-40 group-hover:opacity-100"
+              title="この履歴を削除"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    /**
+     * モーダル内：履歴カードグリッド（大きく表示）の描画
+     */
+    function renderHistoryModalGrid(query) {
+      const grid = document.getElementById('modal-history-grid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      let items = labelHistory;
+      if (query) {
+        items = items.filter(h => 
+          (h.name && h.name.toLowerCase().includes(query)) ||
+          (h.series && h.series.toLowerCase().includes(query)) ||
+          (h.size && h.size.toLowerCase().includes(query))
+        );
+      }
+
+      if (items.length === 0) {
+        grid.innerHTML = `
+          <div class="col-span-full text-center py-12 px-4 bg-white rounded-xl border border-dashed border-slate-300">
+            <svg class="w-10 h-10 mx-auto text-slate-300 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <p class="text-sm text-slate-600 font-bold">${query ? '該当するラベルが見つかりませんでした' : '履歴がまだ登録されていません'}</p>
+            <p class="text-xs text-slate-400 mt-1">${query ? '別のキーワードで検索してみてください' : 'ラベルを作成・編集するとここに自動保存されます'}</p>
+          </div>
+        `;
+        return;
+      }
+
+      items.forEach((item) => {
+        const card = document.createElement('div');
+        // Aone 51467 の実際のチケット比率（約2:1）を反映した大きく見やすいカード
+        card.className = 'group relative flex flex-col justify-between bg-white rounded-xl border-2 border-slate-200/90 hover:border-indigo-500 hover:shadow-xl hover:scale-[1.01] transition-all duration-150 cursor-pointer overflow-hidden text-left';
+        card.title = 'クリックするとこの内容が左上の入力欄に自動でセットされます';
+
+        card.onclick = () => applyHistoryToForm(item);
+
+        const seriesText = item.series ? escapeHtml(item.series) : 'シリーズ指定なし';
+        const nameText = item.name ? escapeHtml(item.name) : '（商品名・文字なし）';
+        const sizeText = item.size ? escapeHtml(item.size) : 'サイズ・価格指定なし';
+
+        card.innerHTML = `
+          <!-- 上部カラーバー: シリーズ名 -->
+          <div 
+            class="px-3.5 py-2 flex items-center justify-between text-white font-bold text-xs tracking-wider shadow-2xs" 
+            style="background-color: ${escapeHtml(item.color || '#10b981')};"
+          >
+            <span class="truncate flex items-center gap-1.5">
+              <svg class="w-3.5 h-3.5 opacity-90 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+              </svg>
+              ${seriesText}
+            </span>
+            <button 
+              type="button" 
+              onclick="deleteHistoryItem('${item.id}', event)"
+              class="text-white/80 hover:text-white hover:bg-black/20 p-1 rounded-md transition ml-2 flex-shrink-0"
+              title="この履歴を削除"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- 中央: 商品名（大きく目立たせる） -->
+          <div class="px-4 py-3 flex-1 flex flex-col justify-center min-h-[56px] bg-gradient-to-b from-white to-slate-50/50">
+            <h4 class="font-black text-slate-900 text-sm leading-snug line-clamp-2 tracking-tight group-hover:text-indigo-600 transition">
+              ${nameText}
+            </h4>
+          </div>
+
+          <!-- 下部: 容量・価格 ＆ 「左上に入力」アクションボタン -->
+          <div class="px-3.5 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs">
+            <span class="text-slate-600 font-semibold truncate text-[11px]">
+              ${sizeText}
+            </span>
+            <div class="flex items-center gap-1 text-[11px] font-bold text-indigo-600 group-hover:text-white bg-indigo-50 group-hover:bg-indigo-600 px-2.5 py-1 rounded-md transition shadow-2xs">
+              <span>左上に入力</span>
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          </div>
+        `;
+
+        grid.appendChild(card);
+      });
+    }
+
+    /**
+     * 右側 A4 シート群の描画
+     */
+    function renderSheets() {
+      const container = document.getElementById('preview-container');
+      container.innerHTML = '';
+
+      const spec = FORMAT_SPECS[currentFormat];
+      let maxSlot = -1;
+      for (let i = 0; i < labelData.length; i++) {
+        if (labelData[i]) maxSlot = i;
+      }
+      const sheetCount = Math.max(1, Math.ceil((maxSlot + 1) / spec.perSheet));
+
+      for (let s = 0; s < sheetCount; s++) {
+        const sheetWrapper = document.createElement('div');
+        sheetWrapper.className = 'sheet-wrapper flex flex-col items-center';
+
+        const headerBadge = document.createElement('div');
+        headerBadge.className = 'sheet-header-badge no-print mb-2 text-xs font-semibold text-slate-500 flex items-center gap-2 select-none';
+        headerBadge.innerHTML = `
+          <span>${s + 1} ページ目 / 全 ${sheetCount} ページ</span>
+          <span class="text-slate-300">•</span>
+          <span>${spec.name}</span>
+        `;
+        sheetWrapper.appendChild(headerBadge);
+
+        const sheetDiv = document.createElement('div');
+        sheetDiv.className = 'sheet shadow-2xl rounded-sm border border-slate-300/80';
+        
+        const startIndex = s * spec.perSheet;
+
+        for (let slot = 0; slot < spec.perSheet; slot++) {
+          const dataIndex = startIndex + slot;
+          const item = (dataIndex < labelData.length && labelData[dataIndex]) ? labelData[dataIndex] : null;
+
+          const col = slot % spec.cols;
+          const row = Math.floor(slot / spec.cols);
+
+          const leftMm = spec.marginLeft + (col * spec.cardWidth);
+          const topMm = spec.marginTop + (row * spec.cardHeight);
+
+          const cell = document.createElement('div');
+          cell.className = 'label-cell absolute overflow-visible group transition-all';
+          cell.style.left = `${leftMm}mm`;
+          cell.style.top = `${topMm}mm`;
+          cell.style.width = `${spec.cardWidth}mm`;
+          cell.style.height = `${spec.cardHeight}mm`;
+          cell.setAttribute('data-slot-num', dataIndex);
+
+          if (item) {
+            cell.setAttribute('data-cell-id', item.id);
+            cell.onmousedown = (e) => {
+              if (e.button !== 0) return;
+              startLabelDrag(e, dataIndex, item);
+            };
+            cell.onclick = (e) => {
+              if (isAutofilling || isDraggingLabel || hasMovedThreshold) return;
+              e.stopPropagation();
+              selectExistingLabel(item.id);
+            };
+
+            if (currentFormat === '44') {
+              cell.innerHTML = buildFormat44HTML(item);
+            } else {
+              cell.innerHTML = buildFormat10HTML(item);
+            }
+          } else {
+            cell.setAttribute('data-empty-slot', dataIndex);
+            cell.onclick = (e) => {
+              if (isAutofilling || isDraggingLabel || hasMovedThreshold) return;
+              e.stopPropagation();
+              selectEmptySlot(dataIndex);
+            };
+
+            cell.innerHTML = `
+              <div 
+                class="empty-slot-guide w-full h-full flex flex-col items-center justify-center text-slate-300 hover:text-indigo-600 hover:bg-indigo-50/50 cursor-pointer select-none transition group/slot"
+                title="クリックしてここに新しく作成（欄は空になります）"
+              >
+                <span class="font-mono text-[10px] opacity-60 group-hover/slot:hidden">枠 ${dataIndex + 1}</span>
+                <span class="hidden group-hover/slot:flex items-center gap-1 text-[10px] font-bold text-indigo-600">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+                  </svg>
+                  白紙枠
+                </span>
+              </div>
+            `;
+          }
+
+          sheetDiv.appendChild(cell);
+        }
+
+        sheetWrapper.appendChild(sheetDiv);
+        container.appendChild(sheetWrapper);
+      }
+    }
+
+    /**
+     * エーワン 51467 用 HTML (48.3 × 25.4mm / 44面 連続タイプ)
+     */
+    function buildFormat44HTML(item) {
+      const seriesText = item.series ? escapeHtml(item.series) : '&nbsp;';
+      const nameText = item.name ? escapeHtml(item.name) : '';
+      const sizeText = item.size ? escapeHtml(item.size) : '&nbsp;';
+
+      return `
+        <div class="relative w-full h-full flex flex-col justify-between bg-white text-slate-800 select-none overflow-hidden pointer-events-none">
+          <!-- 上部帯: シリーズ名・見出し -->
+          <div 
+            class="w-full flex items-center justify-center px-1.5 flex-shrink-0 text-white font-bold tracking-wider" 
+            style="background-color: ${escapeHtml(item.color || '#10b981')}; height: 5.5mm; font-size: 7.0pt; line-height: 1;"
+          >
+            <span class="truncate">${seriesText}</span>
+          </div>
+
+          <!-- 中央: 商品名・メインテキスト（チケット内容） -->
+          <div class="flex-1 flex items-center justify-center px-1.5 py-0.5 text-center overflow-hidden">
+            <span 
+              class="font-black text-slate-900 leading-tight line-clamp-2"
+              style="font-size: 9.0pt; word-break: break-all;"
+            >
+              ${nameText}
+            </span>
+          </div>
+
+          <!-- 下部: 容量・価格・条件・サブテキスト -->
+          <div 
+            class="w-full flex items-center justify-center px-1.5 border-t border-slate-200 text-slate-600 font-semibold" 
+            style="height: 5.2mm; font-size: 6.2pt; line-height: 1; background-color: #f8fafc;"
+          >
+            <span class="truncate">${sizeText}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    /**
+     * 10面カード / 名刺サイズ用 HTML (91 x 55mm)
+     */
+    function buildFormat10HTML(item) {
+      const showBadge = Boolean(item.series && item.series.trim());
+      const nameText = item.name ? escapeHtml(item.name) : '';
+      const sizeText = item.size ? escapeHtml(item.size) : '';
+
+      return `
+        <div class="relative w-full h-full flex flex-col justify-between bg-white text-slate-800 p-3 select-none overflow-hidden pointer-events-none rounded-[3px]">
+          <!-- 上部: 角丸バッジ -->
+          <div class="flex items-center justify-center pt-1 min-h-[18px]">
+            ${showBadge ? `
+              <span 
+                class="inline-block px-3 py-1 rounded-full text-white font-bold tracking-wider shadow-xs truncate max-w-full"
+                style="background-color: ${escapeHtml(item.color || '#10b981')}; font-size: 8.5pt; line-height: 1.1;"
+              >
+                ${escapeHtml(item.series)}
+              </span>
+            ` : ''}
+          </div>
+
+          <!-- 中央: メイン商品名・見出し -->
+          <div class="my-auto text-center px-2 py-1">
+            <h3 
+              class="font-black text-slate-900 leading-snug tracking-tight line-clamp-2"
+              style="font-size: 15pt;"
+            >
+              ${nameText}
+            </h3>
+          </div>
+
+          <!-- 下部: サブテキスト -->
+          <div class="w-full text-center pb-1 min-h-[16px]">
+            ${sizeText ? `
+              <div 
+                class="inline-block px-4 py-0.5 border-b-2 font-bold text-slate-700 tracking-wide truncate max-w-full"
+                style="border-color: ${escapeHtml(item.color || '#10b981')}; font-size: 10pt;"
+              >
+                ${sizeText}
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    /**
+     * ズーム倍率切り替え
+     */
+    function setZoom(scale) {
+      currentZoom = scale;
+      const container = document.getElementById('preview-container');
+      container.style.transform = `scale(${scale})`;
+      
+      ['65', '85', '100'].forEach(val => {
+        const btn = document.getElementById(`zoom-btn-${val}`);
+        if (btn) {
+          if (Math.round(scale * 100) === parseInt(val, 10)) {
+            btn.className = 'px-2.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold font-mono transition';
+          } else {
+            btn.className = 'px-2.5 py-0.5 rounded hover:bg-slate-100 font-mono transition';
+          }
+        }
+      });
+    }
+
+    /**
+     * 画面幅に合わせて自動調整
+     */
+    function fitToWidth() {
+      const previewArea = document.getElementById('preview-area');
+      const availableWidth = previewArea.clientWidth - 64;
+      const a4WidthPx = 794; // 210mm @ 96dpi
+      let ratio = availableWidth / a4WidthPx;
+      ratio = Math.min(1.0, Math.max(0.4, ratio));
+      setZoom(Math.round(ratio * 100) / 100);
+    }
+
+    /**
+     * HTMLエスケープ (XSS対策)
+     */
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+  </script>
+</body>
+</html>
