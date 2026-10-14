@@ -1,15 +1,15 @@
-﻿# カスタムラベルスタジオ Dropbox デプロイスクリプト
+﻿# Custom Label Studio Dropbox Deploy Script
 $src = "d:\tagusakusei kannri"
 $dest = "F:\Dropbox\1.litt\2.Litt共有ファイル\カスタムラベルスタジオ"
 
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "  カスタムラベルスタジオ -> Dropbox デプロイ開始" -ForegroundColor Cyan
+Write-Host "  Custom Label Studio -> Dropbox Deploy" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "ソース: $src"
-Write-Host "配布先: $dest"
+Write-Host "Source: $src"
+Write-Host "Dest  : $dest"
 
 if (-not (Test-Path $dest)) {
-    Write-Host "配布先ディレクトリを作成します: $dest" -ForegroundColor Yellow
+    Write-Host "Creating destination directory: $dest" -ForegroundColor Yellow
     New-Item -ItemType Directory -Path $dest -Force | Out-Null
 }
 
@@ -17,6 +17,7 @@ $filesToDeploy = @(
     "index.html",
     "起動.bat",
     "start.bat",
+    "直接開く(サーバー不要).bat",
     "ZT51467_A.pdf",
     "SPECIFICATION.md",
     "使い方.txt"
@@ -28,13 +29,13 @@ foreach ($file in $filesToDeploy) {
     if (Test-Path $srcPath) {
         $destPath = Join-Path $dest $file
         Copy-Item -Path $srcPath -Destination $destPath -Force
-        Write-Host " [OK] $file をコピーしました" -ForegroundColor Green
+        Write-Host " [OK] $file" -ForegroundColor Green
         $deployedCount++
     } else {
-        Write-Host " [警告] $file がソース内に見つかりません" -ForegroundColor Yellow
+        Write-Host " [WARN] $file not found in source" -ForegroundColor Yellow
     }
 }
 
 Write-Host ""
-Write-Host "デプロイ完了: $deployedCount 個のファイルを正常に更新しました！" -ForegroundColor Cyan
+Write-Host "Deploy complete: $deployedCount files successfully updated!" -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
