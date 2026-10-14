@@ -914,6 +914,7 @@
     let hasMovedThreshold = false;
     let dragGhostEl = null;
     let currentDropTargetSlot = null;
+    let suppressNextCellClick = false; // ドラッグ移動完了直後のクリック誤発火防止
 
     // 履歴検索キーワード
     let historyFilterQuery = '';
@@ -1487,7 +1488,9 @@
       document.getElementById('edit-sub-buttons').classList.add('grid');
 
       updateSelectionHighlight();
-      scrollToFormTop();
+      if (!isMultiSelect) {
+        scrollToFormTop();
+      }
     }
 
     /**
@@ -2131,19 +2134,21 @@
         // --- 2. ラベルのドラッグ移動終了 ---
         if (dragSourceSlot !== null) {
           const sourceSlot = dragSourceSlot;
-          const sourceItem = dragSourceItem;
           const moved = hasMovedThreshold;
           const targetSlot = currentDropTargetSlot;
 
           cleanupDragMove();
 
-          if (!moved) {
-            selectExistingLabel(sourceItem.id);
-          } else {
+          if (moved) {
+            // 実際にドラッグ移動が発生した場合は直後の誤クリックを抑制
+            suppressNextCellClick = true;
+            setTimeout(() => { suppressNextCellClick = false; }, 120);
+
             if (targetSlot !== null && targetSlot !== sourceSlot) {
               executeLabelMove(sourceSlot, targetSlot);
             }
           }
+          // ※ 移動なし（通常クリック/Ctrlクリック）は cell.onclick が処理するためここでは呼ばない
         }
       });
     }
@@ -2272,32 +2277,27 @@
      * 選択セルのハイライト表示を更新（複数選択対応）
      */
     function updateSelectionHighlight() {
-      document.querySelectorAll('.label-cell').forEach(cell => {
-        cell.classList.remove('selected-cell');
-        cell.querySelectorAll('.selected-floating-badge, .fill-handle').forEach(el => el.remove());
-      });
-
       const activeIds = selectedLabelIds.length > 0 ? selectedLabelIds : (selectedLabelId ? [selectedLabelId] : []);
       const isMulti = activeIds.length > 1;
 
-      activeIds.forEach(id => {
-        const cell = document.querySelector(`[data-cell-id="${id}"]`);
-        if (cell) {
+      document.querySelectorAll('.label-cell').forEach(cell => {
+        const cellId = cell.getAttribute('data-cell-id');
+        const emptySlot = cell.getAttribute('data-empty-slot');
+
+        cell.classList.remove('selected-cell');
+        cell.querySelectorAll('.selected-floating-badge, .fill-handle').forEach(el => el.remove());
+
+        if (cellId && activeIds.includes(cellId)) {
           cell.classList.add('selected-cell');
-          const slotIndex = labelData.findIndex(d => d && d.id === id);
+          const slotIndex = labelData.findIndex(d => d && d.id === cellId);
           if (slotIndex !== -1) {
             attachSelectionDecorations(cell, slotIndex + 1, false, slotIndex, isMulti);
           }
+        } else if (activeIds.length === 0 && selectedEmptySlot !== null && emptySlot === String(selectedEmptySlot)) {
+          cell.classList.add('selected-cell');
+          attachSelectionDecorations(cell, selectedEmptySlot + 1, true, selectedEmptySlot, false);
         }
       });
-
-      if (activeIds.length === 0 && selectedEmptySlot !== null) {
-        const emptyCell = document.querySelector(`[data-empty-slot="${selectedEmptySlot}"]`);
-        if (emptyCell) {
-          emptyCell.classList.add('selected-cell');
-          attachSelectionDecorations(emptyCell, selectedEmptySlot + 1, true, selectedEmptySlot, false);
-        }
-      }
     }
 
     /**
@@ -2691,7 +2691,7 @@
           const topMm = spec.marginTop + (row * spec.cardHeight);
 
           const cell = document.createElement('div');
-          cell.className = 'label-cell absolute overflow-visible group transition-all';
+          cell.className = 'label-cell absolute overflow-visible group transition-all select-none';
           cell.style.left = `${leftMm}mm`;
           cell.style.top = `${topMm}mm`;
           cell.style.width = `${spec.cardWidth}mm`;
@@ -2702,10 +2702,11 @@
             cell.setAttribute('data-cell-id', item.id);
             cell.onmousedown = (e) => {
               if (e.button !== 0) return;
+              if (e.ctrlKey || e.metaKey) return; // Ctrl/Cmdキー押下時は複数選択クリックを最優先しドラッグを開始しない
               startLabelDrag(e, dataIndex, item);
             };
             cell.onclick = (e) => {
-              if (isAutofilling || isDraggingLabel || hasMovedThreshold) return;
+              if (suppressNextCellClick || isAutofilling || isDraggingLabel || hasMovedThreshold) return;
               e.stopPropagation();
               selectExistingLabel(item.id, e.ctrlKey || e.metaKey);
             };
@@ -2718,7 +2719,7 @@
           } else {
             cell.setAttribute('data-empty-slot', dataIndex);
             cell.onclick = (e) => {
-              if (isAutofilling || isDraggingLabel || hasMovedThreshold) return;
+              if (suppressNextCellClick || isAutofilling || isDraggingLabel || hasMovedThreshold) return;
               e.stopPropagation();
               selectEmptySlot(dataIndex);
             };
