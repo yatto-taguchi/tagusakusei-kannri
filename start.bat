@@ -1,27 +1,33 @@
 @echo off
+setlocal
 cd /d "%~dp0"
 set PORT=51467
 
-rem 専用ポート51467が既にリッスンされているか確認（すでに起動中ならそのまま開く）
-netstat -ano | findstr /C:":%PORT%" > nul
-if %errorlevel% equ 0 goto OPEN_HTTP
+:: 1. Check if server is already running on port 51467
+netstat -ano | findstr ":%PORT%" >nul 2>&1
+if not errorlevel 1 goto OPEN_HTTP
 
-rem Pythonの実行コマンドを特定
-set PY_CMD=
-where python > nul 2>&1 && set PY_CMD=python
-if "%PY_CMD%"=="" where py > nul 2>&1 && set PY_CMD=py
-if "%PY_CMD%"=="" where python3 > nul 2>&1 && set PY_CMD=python3
-
-if not "%PY_CMD%"=="" (
-    start "CustomLabelStudio-Server-51467" /min %PY_CMD% server.py
-    ping 127.0.0.1 -n 2 > nul
-    goto OPEN_HTTP
+:: 2. Find Python executable
+set "PY_CMD="
+where python >nul 2>&1 && set "PY_CMD=python"
+if not defined PY_CMD (
+    where py >nul 2>&1 && set "PY_CMD=py"
 )
 
-rem Pythonが見つからない場合は直接HTMLを開く
-start "" "index.html"
-exit
+:: 3. Launch Python server if available
+if defined PY_CMD (
+    start "CustomLabelStudio-Server" /min %PY_CMD% "%~dp0server.py"
+    ping 127.0.0.1 -n 2 >nul
+)
+
+:: 4. Verify if port is listening now
+netstat -ano | findstr ":%PORT%" >nul 2>&1
+if not errorlevel 1 goto OPEN_HTTP
+
+:: 5. Failsafe: If server did not start, open index.html directly
+start "" "%~dp0index.html"
+exit /b 0
 
 :OPEN_HTTP
-start "" "http://localhost:%PORT%"
-exit
+start "" "http://localhost:%PORT%/"
+exit /b 0
