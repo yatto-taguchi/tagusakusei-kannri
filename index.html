@@ -387,6 +387,21 @@
         </div>
       </div>
 
+      <!-- Dropbox自動同期ステータスバッジ -->
+      <div 
+        id="sync-status-badge" 
+        onclick="manualSyncFromDropbox()" 
+        title="Dropbox自動同期ステータス（クリックで最新データを確認・再同期）"
+        class="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-600 text-xs font-semibold shadow-2xs hover:bg-white transition cursor-pointer select-none"
+      >
+        <span id="sync-icon" class="flex items-center justify-center">
+          <svg class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z" />
+          </svg>
+        </span>
+        <span id="sync-text">同期確認中...</span>
+      </div>
+
       <!-- 共有・データバックアップ (書き出し / 読み込み) -->
       <div class="flex items-center gap-1.5 bg-slate-100/90 p-1 rounded-lg border border-slate-200 shadow-2xs">
         <button 
@@ -1098,7 +1113,196 @@
           }
         });
       }
+
+      // Dropbox自動同期の初期接続チェック
+      pullDataFromServer(false);
+
+      // 他PCでの変更を検知（ブラウザタブがアクティブになった時に再チェック）
+      window.addEventListener('focus', () => {
+        if (syncAvailable) {
+          pullDataFromServer(false);
+        }
+      });
     });
+
+    // ========================================================
+    // Dropbox 自動同期 (全PCリアルタイム共有) システム
+    // ========================================================
+    const SYNC_API_URL = window.location.protocol === 'file:' 
+      ? 'http://localhost:51467/api/data' 
+      : '/api/data';
+
+    let syncAvailable = false;
+    let lastSyncedAt = null;
+    let saveDebounceTimer = null;
+    let isPullingData = false;
+
+    /**
+     * 同期ステータスUIの更新
+     */
+    function updateSyncStatusUI(status, message, tooltip = '') {
+      const badge = document.getElementById('sync-status-badge');
+      const icon = document.getElementById('sync-icon');
+      const text = document.getElementById('sync-text');
+      if (!badge || !icon || !text) return;
+
+      badge.className = 'hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold shadow-2xs transition cursor-pointer select-none';
+
+      if (status === 'synced') {
+        badge.classList.add('bg-emerald-50', 'border-emerald-200', 'text-emerald-700');
+        icon.innerHTML = '<svg class="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z" /></svg>';
+        text.textContent = message || 'Dropbox同期: 有効';
+      } else if (status === 'syncing') {
+        badge.classList.add('bg-indigo-50', 'border-indigo-200', 'text-indigo-700');
+        icon.innerHTML = '<svg class="w-3.5 h-3.5 text-indigo-600 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>';
+        text.textContent = message || 'Dropbox保存中...';
+      } else if (status === 'local') {
+        badge.classList.add('bg-slate-100', 'border-slate-200', 'text-slate-600');
+        icon.innerHTML = '<svg class="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>';
+        text.textContent = message || 'ローカル保存モード';
+      } else if (status === 'error') {
+        badge.classList.add('bg-amber-50', 'border-amber-200', 'text-amber-700');
+        icon.innerHTML = '<svg class="w-3.5 h-3.5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>';
+        text.textContent = message || '同期未接続';
+      }
+
+      if (tooltip) badge.title = tooltip;
+    }
+
+    /**
+     * サーバーへデータを自動同期保存 (POST)
+     */
+    async function pushDataToServer() {
+      if (!syncAvailable) return;
+      try {
+        updateSyncStatusUI('syncing', 'Dropbox保存中...');
+        const payload = {
+          version: '1.8.0',
+          appName: 'カスタムラベルスタジオ',
+          updatedAt: new Date().toISOString(),
+          currentFormat: currentFormat,
+          labelData: labelData,
+          labelHistory: labelHistory
+        };
+
+        const res = await fetch(SYNC_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          lastSyncedAt = result.savedAt || new Date().toISOString();
+          const d = new Date(lastSyncedAt);
+          const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+          updateSyncStatusUI('synced', `Dropbox同期済 (${timeStr})`, '全PCと自動同期されています。クリックで再同期確認');
+        } else {
+          updateSyncStatusUI('error', '保存エラー');
+        }
+      } catch (e) {
+        console.warn('Dropbox自動保存失敗:', e);
+        syncAvailable = false;
+        updateSyncStatusUI('local', 'ローカル保存モード', '起動.bat で立ち上げるとDropbox自動同期が有効になります');
+      }
+    }
+
+    /**
+     * 変更通知を受け取ってデバウンス保存
+     */
+    function notifyDataChange() {
+      if (!syncAvailable) return;
+      clearTimeout(saveDebounceTimer);
+      saveDebounceTimer = setTimeout(() => {
+        pushDataToServer();
+      }, 400); // 400ms デバウンス
+    }
+
+    /**
+     * サーバーからデータを取得して反映 (GET)
+     */
+    async function pullDataFromServer(isManual = false) {
+      if (isPullingData) return;
+      isPullingData = true;
+      try {
+        const res = await fetch(SYNC_API_URL, {
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const result = await res.json();
+
+        syncAvailable = true;
+
+        if (result.exists && result.data) {
+          const imported = result.data;
+          const remoteUpdatedAt = result.updatedAt || imported.updatedAt;
+
+          // 手動更新でなく、手元の日時が新しければスキップ
+          if (!isManual && lastSyncedAt && remoteUpdatedAt && new Date(remoteUpdatedAt) <= new Date(lastSyncedAt)) {
+            isPullingData = false;
+            return true;
+          }
+
+          lastSyncedAt = remoteUpdatedAt || new Date().toISOString();
+
+          // 既存のシートおよび履歴へ反映
+          let changed = false;
+          if (Array.isArray(imported.labelData)) {
+            labelData = imported.labelData;
+            changed = true;
+          }
+          if (Array.isArray(imported.labelHistory)) {
+            labelHistory = imported.labelHistory;
+            changed = true;
+          }
+          if (imported.currentFormat && FORMAT_SPECS[imported.currentFormat]) {
+            currentFormat = imported.currentFormat;
+            const selectEl = document.getElementById('select-format');
+            if (selectEl) selectEl.value = currentFormat;
+            const infoTag = document.getElementById('format-info-tag');
+            if (infoTag) {
+              infoTag.textContent = currentFormat === '44' ? 'エーワン 51467（44面）' : '1枚に 10面';
+            }
+          }
+
+          if (changed) {
+            localStorage.setItem(SHEET_DATA_STORAGE_KEY, JSON.stringify(labelData));
+            localStorage.setItem(FORMAT_STORAGE_KEY, currentFormat);
+            localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(labelHistory));
+            render();
+          }
+
+          const d = new Date(lastSyncedAt);
+          const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+          updateSyncStatusUI('synced', `Dropbox同期済 (${timeStr})`, '全PCと自動同期されています。クリックで再同期確認');
+          if (isManual) {
+            showToast('☁', 'Dropboxから最新データを同期しました！');
+          }
+          isPullingData = false;
+          return true;
+        } else {
+          // サーバー上にまだ共有ファイルがない場合（初回の初回）
+          // 現在のPCのデータをサーバーへ初回自動エクスポート！
+          console.log('Dropbox共有ファイルが未作成のため、現在のデータを初回送信します');
+          await pushDataToServer();
+          isPullingData = false;
+          return true;
+        }
+      } catch (e) {
+        syncAvailable = false;
+        updateSyncStatusUI('local', 'ローカル保存モード', '起動.bat で起動するとDropbox全PC自動同期が有効になります');
+        isPullingData = false;
+        return false;
+      }
+    }
+
+    /**
+     * 手動で同期を実行する（バッジクリック時）
+     */
+    function manualSyncFromDropbox() {
+      updateSyncStatusUI('syncing', 'Dropbox確認中...');
+      pullDataFromServer(true);
+    }
 
     /**
      * シート上の配置データと選択用紙をローカルストレージから読み込み
@@ -1139,6 +1343,7 @@
       try {
         localStorage.setItem(SHEET_DATA_STORAGE_KEY, JSON.stringify(labelData));
         localStorage.setItem(FORMAT_STORAGE_KEY, currentFormat);
+        notifyDataChange();
       } catch (e) {
         console.warn('シートデータ保存失敗:', e);
       }
@@ -1167,6 +1372,7 @@
     function saveHistoryToStorage() {
       try {
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(labelHistory));
+        notifyDataChange();
       } catch (e) {
         console.warn('履歴保存失敗:', e);
       }

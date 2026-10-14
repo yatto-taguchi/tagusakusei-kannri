@@ -15,6 +15,7 @@ if (-not (Test-Path $dest)) {
 
 $filesToDeploy = @(
     "index.html",
+    "server.py",
     "起動.bat",
     "start.bat",
     "直接開く(サーバー不要).bat",
