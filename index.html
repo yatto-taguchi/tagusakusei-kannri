@@ -514,28 +514,52 @@
               </div>
             </div>
 
-            <!-- ワンクリック選択カラー -->
+            <!-- ワンクリック選択カラー（2段パレット） -->
             <div>
               <span class="block text-[11px] font-medium text-slate-500 mb-1.5">よく使う色（ワンクリック選択）:</span>
-              <div class="flex items-center gap-2 flex-wrap">
-                <!-- ピンク -->
-                <button type="button" onclick="setQuickColor('#ec4899')" title="ピンク" class="w-6 h-6 rounded-full bg-[#ec4899] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
-                <!-- 赤 -->
-                <button type="button" onclick="setQuickColor('#ef4444')" title="レッド" class="w-6 h-6 rounded-full bg-[#ef4444] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
-                <!-- オレンジ -->
-                <button type="button" onclick="setQuickColor('#f97316')" title="オレンジ" class="w-6 h-6 rounded-full bg-[#f97316] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
-                <!-- ゴールド・アンバー -->
-                <button type="button" onclick="setQuickColor('#d97706')" title="アンバーゴールド" class="w-6 h-6 rounded-full bg-[#d97706] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
-                <!-- グリーン -->
-                <button type="button" onclick="setQuickColor('#10b981')" title="ボタニカルグリーン" class="w-6 h-6 rounded-full bg-[#10b981] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
-                <!-- シアン・水色 -->
-                <button type="button" onclick="setQuickColor('#06b6d4')" title="ミントシアン" class="w-6 h-6 rounded-full bg-[#06b6d4] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
-                <!-- ブルー -->
-                <button type="button" onclick="setQuickColor('#3b82f6')" title="サロンブルー" class="w-6 h-6 rounded-full bg-[#3b82f6] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
-                <!-- パープル -->
-                <button type="button" onclick="setQuickColor('#8b5cf6')" title="エレガントパープル" class="w-6 h-6 rounded-full bg-[#8b5cf6] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
-                <!-- チャコールグレー -->
-                <button type="button" onclick="setQuickColor('#334155')" title="シックチャコール" class="w-6 h-6 rounded-full bg-[#334155] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200"></button>
+              <div class="space-y-1.5">
+                <!-- 1段目: ブライト＆ビビッド系 -->
+                <div class="flex items-center gap-2 flex-wrap">
+                  <!-- ピンク -->
+                  <button type="button" onclick="setQuickColor('#ec4899')" title="ピンク" class="w-6 h-6 rounded-full bg-[#ec4899] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- 赤 -->
+                  <button type="button" onclick="setQuickColor('#ef4444')" title="レッド" class="w-6 h-6 rounded-full bg-[#ef4444] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- オレンジ -->
+                  <button type="button" onclick="setQuickColor('#f97316')" title="オレンジ" class="w-6 h-6 rounded-full bg-[#f97316] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- ゴールド・アンバー -->
+                  <button type="button" onclick="setQuickColor('#d97706')" title="アンバーゴールド" class="w-6 h-6 rounded-full bg-[#d97706] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- グリーン -->
+                  <button type="button" onclick="setQuickColor('#10b981')" title="ボタニカルグリーン" class="w-6 h-6 rounded-full bg-[#10b981] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- シアン・水色 -->
+                  <button type="button" onclick="setQuickColor('#06b6d4')" title="ミントシアン" class="w-6 h-6 rounded-full bg-[#06b6d4] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- ブルー -->
+                  <button type="button" onclick="setQuickColor('#3b82f6')" title="サロンブルー" class="w-6 h-6 rounded-full bg-[#3b82f6] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- パープル -->
+                  <button type="button" onclick="setQuickColor('#8b5cf6')" title="エレガントパープル" class="w-6 h-6 rounded-full bg-[#8b5cf6] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- チャコールグレー -->
+                  <button type="button" onclick="setQuickColor('#334155')" title="シックチャコール" class="w-6 h-6 rounded-full bg-[#334155] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                </div>
+                <!-- 2段目: ディープ＆ニュアンス系 -->
+                <div class="flex items-center gap-2 flex-wrap">
+                  <!-- ベリーマゼンタ -->
+                  <button type="button" onclick="setQuickColor('#be185d')" title="ベリーマゼンタ" class="w-6 h-6 rounded-full bg-[#be185d] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- ボルドーワイン -->
+                  <button type="button" onclick="setQuickColor('#881337')" title="ボルドーワイン" class="w-6 h-6 rounded-full bg-[#881337] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- テラコッタブラウン -->
+                  <button type="button" onclick="setQuickColor('#92400e')" title="テラコッタブラウン" class="w-6 h-6 rounded-full bg-[#92400e] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- オリーブハーブ -->
+                  <button type="button" onclick="setQuickColor('#65a30d')" title="オリーブハーブ" class="w-6 h-6 rounded-full bg-[#65a30d] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- ディープフォレスト -->
+                  <button type="button" onclick="setQuickColor('#047857')" title="ディープフォレスト" class="w-6 h-6 rounded-full bg-[#047857] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- ディープティール -->
+                  <button type="button" onclick="setQuickColor('#0d9488')" title="ディープティール" class="w-6 h-6 rounded-full bg-[#0d9488] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- ナイトネイビー -->
+                  <button type="button" onclick="setQuickColor('#1e3a8a')" title="ナイトネイビー" class="w-6 h-6 rounded-full bg-[#1e3a8a] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- ロイヤルインディゴ -->
+                  <button type="button" onclick="setQuickColor('#6366f1')" title="ロイヤルインディゴ" class="w-6 h-6 rounded-full bg-[#6366f1] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                  <!-- ピュアブラック -->
+                  <button type="button" onclick="setQuickColor('#000000')" title="ピュアブラック" class="w-6 h-6 rounded-full bg-[#000000] hover:scale-115 active:scale-95 transition shadow-sm border-2 border-white ring-1 ring-slate-200 cursor-pointer"></button>
+                </div>
               </div>
             </div>
 
