@@ -323,20 +323,51 @@
       </div>
     </div>
 
-    <!-- 中央：表示倍率コントロール（ヘッダーツールバー内に配置） -->
-    <div class="hidden md:flex items-center gap-1.5 bg-slate-100/90 px-3 py-1 rounded-full border border-slate-200 text-xs text-slate-700 shadow-2xs">
-      <span class="font-semibold text-slate-500 flex items-center gap-1 pl-0.5 text-[11px]">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-        </svg>
-        表示倍率:
-      </span>
-      <button id="zoom-btn-65" onclick="setZoom(0.65)" class="px-2.5 py-0.5 rounded hover:bg-white/80 font-mono transition text-xs">65%</button>
-      <button id="zoom-btn-85" onclick="setZoom(0.85)" class="px-2.5 py-0.5 rounded hover:bg-white/80 font-mono transition text-xs">85%</button>
-      <button id="zoom-btn-100" onclick="setZoom(1.0)" class="px-2.5 py-0.5 rounded bg-white text-indigo-700 font-bold shadow-2xs font-mono transition text-xs">100% (実寸)</button>
-      <div class="h-3 w-[1px] bg-slate-300 mx-0.5"></div>
-      <button onclick="fitToWidth()" class="px-2.5 py-0.5 rounded hover:bg-white/80 text-indigo-700 font-semibold transition text-xs">画面幅に合わせる</button>
+    <!-- 中央：表示倍率コントロール ＆ 元に戻す/やり直し（ヘッダーツールバー内に配置） -->
+    <div class="hidden md:flex items-center gap-2">
+      <!-- 表示倍率ピル -->
+      <div class="flex items-center gap-1.5 bg-slate-100/90 px-3 py-1 rounded-full border border-slate-200 text-xs text-slate-700 shadow-2xs">
+        <span class="font-semibold text-slate-500 flex items-center gap-1 pl-0.5 text-[11px]">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+          </svg>
+          表示倍率:
+        </span>
+        <button id="zoom-btn-65" onclick="setZoom(0.65)" class="px-2.5 py-0.5 rounded hover:bg-white/80 font-mono transition text-xs">65%</button>
+        <button id="zoom-btn-85" onclick="setZoom(0.85)" class="px-2.5 py-0.5 rounded hover:bg-white/80 font-mono transition text-xs">85%</button>
+        <button id="zoom-btn-100" onclick="setZoom(1.0)" class="px-2.5 py-0.5 rounded bg-white text-indigo-700 font-bold shadow-2xs font-mono transition text-xs">100% (実寸)</button>
+        <div class="h-3 w-[1px] bg-slate-300 mx-0.5"></div>
+        <button onclick="fitToWidth()" class="px-2.5 py-0.5 rounded hover:bg-white/80 text-indigo-700 font-semibold transition text-xs">画面幅に合わせる</button>
+      </div>
+
+      <!-- 元に戻す (Ctrl+Z) / やり直す (Ctrl+Y) ボタン -->
+      <div class="flex items-center gap-0.5 bg-slate-100/90 p-0.5 rounded-full border border-slate-200 shadow-2xs">
+        <button 
+          id="btn-undo"
+          type="button" 
+          onclick="undo()" 
+          disabled
+          title="一つ前の処理に戻す (Ctrl+Z)"
+          class="w-7 h-7 rounded-full flex items-center justify-center text-slate-600 hover:text-indigo-600 hover:bg-white active:scale-90 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v2m0 0l-3-3m3 3l3-3M3 10l3-3m-3 3l3 3" />
+          </svg>
+        </button>
+        <button 
+          id="btn-redo"
+          type="button" 
+          onclick="redo()" 
+          disabled
+          title="やり直す (Ctrl+Y)"
+          class="w-7 h-7 rounded-full flex items-center justify-center text-slate-600 hover:text-indigo-600 hover:bg-white active:scale-90 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 10H11a5 5 0 00-5 5v2m0 0l3-3m-3 3l-3-3M21 10l-3-3m3 3l-3 3" />
+          </svg>
+        </button>
+      </div>
     </div>
 
     <!-- 右側アクション・ステータス -->
@@ -704,6 +735,7 @@
             <p class="text-slate-600 leading-relaxed">
               • 枠をつかんでドラッグすると、別の枠へ<strong>場所を移動・入れ替え</strong>できます。<br>
               • 枠の<strong>右下の青いポッチをドラッグ</strong>すると、<strong>真下（縦）または右隣（横）へ連続コピー</strong>（オートフィル）されます。<br>
+              • <kbd class="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Ctrl+Z</kbd> で一つ前の処理に戻す（<kbd class="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Ctrl+Y</kbd> でやり直し）ことができます。<br>
               • <kbd class="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Ctrl+C</kbd> / <kbd class="px-1 py-0.5 bg-white border border-slate-200 rounded font-mono text-[10px]">Ctrl+V</kbd> でのコピペも可能です。
             </p>
           </div>
@@ -868,6 +900,91 @@
     // 履歴検索キーワード
     let historyFilterQuery = '';
 
+    // Undo / Redo（元に戻す / やり直し）履歴スタック
+    let undoStack = [];
+    let redoStack = [];
+    const MAX_UNDO_STACK = 40;
+
+    /**
+     * 操作直前に現在の状態を記録（Undoスナップショット）
+     */
+    function recordUndoSnapshot() {
+      const currentSnapshot = JSON.stringify(labelData);
+      // 直前のスナップショットと同じなら重複して記録しない
+      if (undoStack.length > 0 && undoStack[undoStack.length - 1] === currentSnapshot) {
+        return;
+      }
+      undoStack.push(currentSnapshot);
+      if (undoStack.length > MAX_UNDO_STACK) {
+        undoStack.shift();
+      }
+      // 新たな操作が行われたため、やり直し(Redo)スタックはリセット
+      redoStack = [];
+      updateUndoRedoButtons();
+    }
+
+    /**
+     * Undo/Redoボタンの有効/無効状態を更新
+     */
+    function updateUndoRedoButtons() {
+      const btnUndo = document.getElementById('btn-undo');
+      const btnRedo = document.getElementById('btn-redo');
+      if (btnUndo) {
+        btnUndo.disabled = (undoStack.length === 0);
+      }
+      if (btnRedo) {
+        btnRedo.disabled = (redoStack.length === 0);
+      }
+    }
+
+    /**
+     * 一つ前の状態に戻す (Ctrl+Z / Undo)
+     */
+    function undo() {
+      if (undoStack.length === 0) return;
+
+      // 現在の状態をRedoスタックに退避
+      const currentSnapshot = JSON.stringify(labelData);
+      redoStack.push(currentSnapshot);
+
+      // Undoスタックから直前の状態を取り出して復元
+      const prevSnapshot = undoStack.pop();
+      try {
+        labelData = JSON.parse(prevSnapshot);
+        deselectAndClear();
+        render();
+        saveSheetDataToStorage();
+        updateUndoRedoButtons();
+        showToast('↩️', '一つ前の状態に戻しました (Ctrl+Z)');
+      } catch (e) {
+        console.error('Undo 復元エラー:', e);
+      }
+    }
+
+    /**
+     * やり直す (Ctrl+Y / Redo)
+     */
+    function redo() {
+      if (redoStack.length === 0) return;
+
+      // 現在の状態をUndoスタックに退避
+      const currentSnapshot = JSON.stringify(labelData);
+      undoStack.push(currentSnapshot);
+
+      // Redoスタックから次の状態を取り出して復元
+      const nextSnapshot = redoStack.pop();
+      try {
+        labelData = JSON.parse(nextSnapshot);
+        deselectAndClear();
+        render();
+        saveSheetDataToStorage();
+        updateUndoRedoButtons();
+        showToast('↪️', 'やり直しました (Ctrl+Y)');
+      } catch (e) {
+        console.error('Redo 復元エラー:', e);
+      }
+    }
+
     /**
      * 用紙フォーマット仕様 (ミリメートル mm 単位)
      */
@@ -911,6 +1028,19 @@
       render();
       initKeyboardShortcuts();
       initGlobalDragListeners();
+      updateUndoRedoButtons();
+
+      // 既存枠選択中の入力フォームフォーカス時、編集前の状態をUndoスタックに保持
+      ['input-series', 'input-name', 'input-size'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('focus', () => {
+            if (selectedLabelId) {
+              recordUndoSnapshot();
+            }
+          });
+        }
+      });
     });
 
     /**
@@ -1072,6 +1202,7 @@
      * 見本データ再読込
      */
     function loadSampleData() {
+      recordUndoSnapshot();
       initSampleData();
       render();
       showToast('✨', '見本ラベルデータを読み込みました');
@@ -1109,6 +1240,23 @@
     function initKeyboardShortcuts() {
       document.addEventListener('keydown', (e) => {
         const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.isContentEditable);
+
+        // Ctrl+Z (一つ前の処理に戻す / 元に戻す)
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+          if (isInputFocused) return; // 入力欄フォーカス中はブラウザネイティブのテキストUndoを優先
+          e.preventDefault();
+          undo();
+          return;
+        }
+
+        // Ctrl+Y または Ctrl+Shift+Z (やり直す / Redo)
+        if (((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) ||
+            ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z'))) {
+          if (isInputFocused) return; // 入力欄フォーカス中はブラウザネイティブのテキストRedoを優先
+          e.preventDefault();
+          redo();
+          return;
+        }
 
         // Ctrl+C (コピー)
         if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
@@ -1169,6 +1317,7 @@
      */
     function pasteClipboardLabel() {
       if (!internalClipboard) return;
+      recordUndoSnapshot();
 
       const newLabel = {
         id: generateId(),
@@ -1358,6 +1507,7 @@
 
       if (selectedEmptySlot !== null) {
         if (!labelData[selectedEmptySlot]) {
+          recordUndoSnapshot();
           labelData[selectedEmptySlot] = {
             id: generateId(),
             series: series,
@@ -1392,6 +1542,9 @@
      * クイックカラー選択
      */
     function setQuickColor(hex) {
+      if (selectedLabelId || selectedEmptySlot !== null) {
+        recordUndoSnapshot();
+      }
       const picker = document.getElementById('input-color');
       picker.value = hex;
       document.getElementById('color-hex-label').textContent = hex.toUpperCase();
@@ -1421,6 +1574,7 @@
      */
     function handleFormSubmit(e) {
       e.preventDefault();
+      recordUndoSnapshot();
 
       const seriesInput = document.getElementById('input-series');
       const nameInput = document.getElementById('input-name');
@@ -1488,6 +1642,7 @@
      */
     function duplicateSelectedLabel() {
       if (!selectedLabelId) return;
+      recordUndoSnapshot();
       const index = labelData.findIndex(d => d && d.id === selectedLabelId);
       if (index !== -1) {
         const item = labelData[index];
@@ -1514,6 +1669,7 @@
      */
     function removeSelectedLabel() {
       if (!selectedLabelId) return;
+      recordUndoSnapshot();
       const index = labelData.findIndex(item => item && item.id === selectedLabelId);
       if (index !== -1) {
         labelData[index] = null;
@@ -1531,6 +1687,7 @@
      */
     function removeLabel(id, event) {
       if (event) event.stopPropagation();
+      recordUndoSnapshot();
       const index = labelData.findIndex(item => item && item.id === id);
       if (index !== -1) {
         labelData[index] = null;
@@ -1550,6 +1707,7 @@
     function clearAllLabels() {
       if (labelData.length === 0) return;
       if (confirm('登録されているすべてのラベルを削除しますか？')) {
+        recordUndoSnapshot();
         labelData = [];
         deselectAndClear();
         render();
@@ -1720,6 +1878,7 @@
     function executeLabelMove(sourceSlot, targetSlot) {
       const sourceItem = labelData[sourceSlot];
       if (!sourceItem) return;
+      recordUndoSnapshot();
 
       const targetItem = labelData[targetSlot] || null;
 
@@ -1912,6 +2071,7 @@
      */
     function applyAutofillCopy(sourceIndex, targetIndices) {
       if (targetIndices.length === 0) return;
+      recordUndoSnapshot();
 
       const sourceItem = (sourceIndex < labelData.length && labelData[sourceIndex]) ? labelData[sourceIndex] : {
         series: '',
@@ -2035,6 +2195,10 @@
      */
     function applyHistoryToForm(item) {
       if (!item) return;
+
+      if (selectedLabelId || selectedEmptySlot !== null) {
+        recordUndoSnapshot();
+      }
 
       // 1. 左上のフォームに値を反映
       document.getElementById('input-series').value = item.series || '';
