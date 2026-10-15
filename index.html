@@ -1144,6 +1144,7 @@
     let isPushingData = false;
     let pollingInterval = null;
     const POLLING_INTERVAL_MS = 3000; // 3秒ごとの超高速バックグラウンド監視
+    const deletedHistoryIds = new Set(); // 削除した履歴のゾンビ復活防止（Tombstone）
 
     /**
      * 同期ステータスUIの更新
@@ -1225,7 +1226,7 @@
 
     /**
      * リモートの履歴と手元の履歴を安全に合体マージ
-     * （どちらのPCで追加した履歴も絶対に消えずに合体されます）
+     * （どちらのPCで追加した履歴も絶対に消えずに合体されます。削除済みIDは除外）
      */
     function mergeHistory(incomingHistory) {
       if (!Array.isArray(incomingHistory) || incomingHistory.length === 0) return false;
@@ -1236,6 +1237,9 @@
 
       combined.forEach(item => {
         if (!item) return;
+        // 意図的に削除されたIDは合体から除外（ゾンビ復活防止）
+        if (item.id && deletedHistoryIds.has(item.id)) return;
+
         const series = (item.series || '').trim();
         const name = (item.name || '').trim();
         const size = (item.size || '').trim();
@@ -1257,26 +1261,42 @@
 
     /**
      * 3秒ごとの超軽量バックグラウンド自動同期ポーリング
-     * （他PCで保存された最新データを自動検知して画面を更新）
+     * （他PCで保存された最新データを自動検知＆サーバー起動時の自動接続復旧）
      */
     function startPollingSync() {
       if (pollingInterval) clearInterval(pollingInterval);
       pollingInterval = setInterval(async () => {
-        if (!syncAvailable || isPullingData || isPushingData) return;
+        // 現在Pull/Push処理中、またはマウスドラッグ・オートフィル操作中はスキップ
+        if (isPullingData || isPushingData || isDragging || isAutofilling) return;
         try {
           const res = await fetch(SYNC_STATUS_URL, {
             headers: { 'Cache-Control': 'no-cache' }
           });
-          if (!res.ok) return;
+          if (!res.ok) {
+            if (syncAvailable) {
+              syncAvailable = false;
+              updateSyncStatusUI('local', 'ローカル保存モード', 'サーバー切断を検知しました');
+            }
+            return;
+          }
           const st = await res.json();
           if (st.exists && st.updatedAtMs) {
+            // サーバー起動後の初回自動再接続
+            if (!syncAvailable) {
+              syncAvailable = true;
+              await pullDataFromServer(false);
+              return;
+            }
             // リモートが手元より新しければ自動で最新データを取得・画面反映
             if (st.updatedAtMs > lastSyncedAtMs) {
               await pullDataFromServer(false);
             }
           }
         } catch (e) {
-          // バックグラウンドポーリング失敗は静かにスルー
+          if (syncAvailable) {
+            syncAvailable = false;
+            updateSyncStatusUI('local', 'ローカル保存モード', '起動.bat で起動するとDropbox自動同期が有効になります');
+          }
         }
       }, POLLING_INTERVAL_MS);
     }
@@ -1295,6 +1315,7 @@
           appName: 'カスタムラベルスタジオ',
           updatedAt: new Date(nowMs).toISOString(),
           updatedAtMs: nowMs,
+          baseUpdatedAtMs: lastSyncedAtMs, // 手元データが同期された基準時刻（真の楽観的ロック）
           currentFormat: currentFormat,
           labelData: labelData,
           labelHistory: labelHistory
@@ -1306,11 +1327,30 @@
           body: JSON.stringify(payload)
         });
 
-        // 409 Conflict: 他PCでより新しいデータが保存されていた場合、上書きせず最新を取り込んで復旧
+        // 409 Conflict: 他PCでより新しいデータが保存されていた場合、自作ラベルを救済統合
         if (res.status === 409) {
           console.warn('他PCで新しい変更が行われたため、最新データを取得して統合します');
-          showToast('🔄', '他PCでの変更を検知したため最新に更新しました');
+          showToast('🔄', '他PCでの更新を検知したため最新に統合しました');
+          // 自分が今保存しようとしたラベルを一時保持
+          const myLabels = labelData.filter(d => d !== null);
           await pullDataFromServer(true);
+          // 最新の相手のシートに、自分のラベルを空き枠があれば追加統合
+          let mergedAny = false;
+          myLabels.forEach(item => {
+            const alreadyExists = labelData.some(d => d && d.id === item.id);
+            if (!alreadyExists) {
+              const emptyIdx = labelData.findIndex((d, idx) => idx < 44 && d === null);
+              if (emptyIdx !== -1) {
+                labelData[emptyIdx] = item;
+                mergedAny = true;
+              }
+            }
+          });
+          if (mergedAny) {
+            saveSheetDataToStorage();
+            render();
+            notifyDataChange(true);
+          }
           return false;
         }
 
@@ -1356,6 +1396,8 @@
      */
     async function pullDataFromServer(isManual = false) {
       if (isPullingData) return;
+      // ユーザーがドラッグ操作中・オートフィル中の場合は操作完了まで再描画を保留
+      if (!isManual && (isDragging || isAutofilling)) return;
       isPullingData = true;
       try {
         const res = await fetch(SYNC_API_URL, {
@@ -2934,9 +2976,11 @@
      */
     function deleteHistoryItem(id, event) {
       if (event) event.stopPropagation();
+      deletedHistoryIds.add(id);
       labelHistory = labelHistory.filter(h => h.id !== id);
       saveHistoryToStorage();
       renderHistoryUI();
+      notifyDataChange(true); // 即時同期でリモートからも削除
       showToast('🗑️', '履歴を1件削除しました');
     }
 
@@ -2946,9 +2990,11 @@
     function clearAllHistory() {
       if (labelHistory.length === 0) return;
       if (confirm('保存されているすべてのラベル履歴を削除しますか？')) {
+        labelHistory.forEach(h => { if (h && h.id) deletedHistoryIds.add(h.id); });
         labelHistory = [];
         saveHistoryToStorage();
         renderHistoryUI();
+        notifyDataChange(true); // 即時同期でリモートからも削除
         showToast('🗑️', 'すべての履歴を削除しました');
       }
     }

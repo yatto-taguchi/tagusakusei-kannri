@@ -9,6 +9,7 @@ import json
 import os
 import sys
 import shutil
+import time
 from datetime import datetime
 
 PORT = 51467
@@ -105,13 +106,14 @@ class CustomLabelStudioHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 payload = json.loads(post_body.decode("utf-8"))
 
-                # 巻き戻り防止ガード: 既存ファイルの方がクライアントのタイムスタンプより新しい場合の上書きを拒否
+                # 巻き戻り防止ガード: 既存ファイルの方がクライアントのベース同期時刻より新しい場合の上書きを拒否
                 if os.path.exists(DATA_FILE) and not payload.get("force", False):
                     try:
                         current_mtime_ms = int(os.path.getmtime(DATA_FILE) * 1000)
-                        client_ms = int(payload.get("updatedAtMs", 0))
-                        # 既存ファイルが1.5秒以上新しい場合は巻き戻りと判定
-                        if client_ms > 0 and current_mtime_ms > client_ms + 1500:
+                        # クライアントが元にした同期日時（baseUpdatedAtMs優先、未指定時はupdatedAtMs）
+                        base_ms = int(payload.get("baseUpdatedAtMs", payload.get("updatedAtMs", 0)))
+                        # 既存ファイルが1000ms以上新しい場合は巻き戻り（競合）と判定
+                        if base_ms > 0 and current_mtime_ms > base_ms + 1000:
                             res = {
                                 "success": False,
                                 "conflict": True,
@@ -127,18 +129,30 @@ class CustomLabelStudioHandler(http.server.SimpleHTTPRequestHandler):
                     except Exception as e:
                         print(f"[警告] タイムスタンプ検査中に例外: {e}")
 
-                # 既存データがあれば直前のバックアップを作成
+                # 既存データがあれば直前のバックアップを作成（ロック対策リトライ付き）
                 if os.path.exists(DATA_FILE):
-                    try:
-                        shutil.copyfile(DATA_FILE, BACKUP_FILE)
-                    except Exception as e:
-                        print(f"[警告] バックアップ作成に失敗: {e}")
+                    for _ in range(3):
+                        try:
+                            shutil.copyfile(DATA_FILE, BACKUP_FILE)
+                            break
+                        except Exception:
+                            time.sleep(0.05)
 
-                # 新しいデータを書き込み (アトミックに一時ファイル経由で保存)
+                # 新しいデータを書き込み (アトミックに一時ファイル経由で保存＆ロック対策リトライ)
                 tmp_file = DATA_FILE + ".tmp"
                 with open(tmp_file, "w", encoding="utf-8") as f:
                     json.dump(payload, f, ensure_ascii=False, indent=2)
-                os.replace(tmp_file, DATA_FILE)
+
+                # Dropbox等のファイル同期ロック対策: 最大3回リトライ
+                for attempt in range(3):
+                    try:
+                        os.replace(tmp_file, DATA_FILE)
+                        break
+                    except (PermissionError, OSError) as e:
+                        if attempt < 2:
+                            time.sleep(0.1)
+                        else:
+                            raise e
 
                 mtime_ms = int(os.path.getmtime(DATA_FILE) * 1000)
                 res = {
