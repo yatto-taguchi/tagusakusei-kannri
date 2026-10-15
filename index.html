@@ -1290,7 +1290,6 @@
 
           // 手動更新でなく、手元の日時が新しければスキップ（ミリ秒数値で比較）
           if (!isManual && lastSyncedAtMs > 0 && remoteUpdatedAtMs > 0 && remoteUpdatedAtMs <= lastSyncedAtMs) {
-            isPullingData = false;
             return true;
           }
 
@@ -1331,20 +1330,19 @@
           if (isManual) {
             showToast('☁', 'Dropboxから最新データを同期しました！');
           }
-          isPullingData = false;
           return true;
         } else {
           // サーバー上にまだ共有ファイルがない場合（初回の初回）
           syncHistoryWithSheet();
           await pushDataToServer();
-          isPullingData = false;
           return true;
         }
       } catch (e) {
         syncAvailable = false;
         updateSyncStatusUI('local', 'ローカル保存モード', '起動.bat で起動するとDropbox全PC自動同期が有効になります');
-        isPullingData = false;
         return false;
+      } finally {
+        isPullingData = false;
       }
     }
 
