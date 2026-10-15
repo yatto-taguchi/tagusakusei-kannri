@@ -1226,18 +1226,27 @@
 
     /**
      * リモートの履歴と手元の履歴を安全に合体マージ
-     * （どちらのPCで追加した履歴も絶対に消えずに合体されます。削除済みIDは除外）
+     * サーバーの履歴（incomingHistory）を最新の正本とし、
+     * 手元の履歴からは「前回の同期時刻以降（timestamp > lastSyncedAtMs）にローカルで新しく作成された未送信の履歴」のみを追加合体します。
+     * これにより、他PCで削除された履歴がゾンビ復活するのを完全に防ぎつつ、手元で新しく作ったラベルの履歴は絶対に失われません。
      */
     function mergeHistory(incomingHistory) {
-      if (!Array.isArray(incomingHistory) || incomingHistory.length === 0) return false;
+      if (!Array.isArray(incomingHistory)) incomingHistory = [];
       if (!Array.isArray(labelHistory)) labelHistory = [];
 
-      const combined = [...labelHistory, ...incomingHistory];
+      // 手元の履歴のうち、前回の同期以降に新しく作成された未送信アイテムのみを抽出
+      const localNewItems = labelHistory.filter(h => {
+        if (!h) return false;
+        if (h.id && deletedHistoryIds.has(h.id)) return false;
+        return (h.timestamp || 0) > lastSyncedAtMs;
+      });
+
+      // サーバーの最新正本履歴 + ローカルの未送信新規履歴
+      const combined = [...incomingHistory, ...localNewItems];
       const map = new Map();
 
       combined.forEach(item => {
         if (!item) return;
-        // 意図的に削除されたIDは合体から除外（ゾンビ復活防止）
         if (item.id && deletedHistoryIds.has(item.id)) return;
 
         const series = (item.series || '').trim();
@@ -1331,25 +1340,32 @@
         if (res.status === 409) {
           console.warn('他PCで新しい変更が行われたため、最新データを取得して統合します');
           showToast('🔄', '他PCでの更新を検知したため最新に統合しました');
-          // 自分が今保存しようとしたラベルを一時保持
+          // 自分が今保存しようとしたラベルを一時退避
           const myLabels = labelData.filter(d => d !== null);
           await pullDataFromServer(true);
+
           // 最新の相手のシートに、自分のラベルを空き枠があれば追加統合
+          const maxSlots = FORMAT_SPECS[currentFormat]?.total || (currentFormat === '10' ? 10 : 44);
           let mergedAny = false;
           myLabels.forEach(item => {
             const alreadyExists = labelData.some(d => d && d.id === item.id);
             if (!alreadyExists) {
-              const emptyIdx = labelData.findIndex((d, idx) => idx < 44 && d === null);
-              if (emptyIdx !== -1) {
-                labelData[emptyIdx] = item;
+              let targetSlot = 0;
+              while (targetSlot < maxSlots && labelData[targetSlot]) {
+                targetSlot++;
+              }
+              if (targetSlot < maxSlots) {
+                labelData[targetSlot] = item;
                 mergedAny = true;
               }
             }
           });
+
+          isPushingData = false; // フラグを解除してから再保存へ進む
           if (mergedAny) {
             saveSheetDataToStorage();
             render();
-            notifyDataChange(true);
+            await pushDataToServer(); // 統合した結果をサーバーへ確実に再保存
           }
           return false;
         }
@@ -1442,6 +1458,11 @@
 
           // シート上の全ラベルから履歴を自動補完（シートにあれば履歴に必ず復元）
           syncHistoryWithSheet();
+
+          // リモートで削除された枠を編集中の場合、選択を安全に解除
+          if (selectedLabelId && !labelData.some(d => d && d.id === selectedLabelId)) {
+            deselectAndClear();
+          }
 
           localStorage.setItem(SHEET_DATA_STORAGE_KEY, JSON.stringify(labelData));
           localStorage.setItem(FORMAT_STORAGE_KEY, currentFormat);
