@@ -31,6 +31,30 @@ class CustomLabelStudioHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        # API: 軽量ステータス確認（3秒ごとの高速ポーリング用）
+        if self.path.startswith("/api/status"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self._set_cors_headers()
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+
+            if os.path.exists(DATA_FILE):
+                try:
+                    mtime_ms = int(os.path.getmtime(DATA_FILE) * 1000)
+                    res = {
+                        "exists": True,
+                        "updatedAtMs": mtime_ms,
+                        "size": os.path.getsize(DATA_FILE)
+                    }
+                except Exception as e:
+                    res = {"exists": False, "error": str(e)}
+            else:
+                res = {"exists": False, "updatedAtMs": 0}
+
+            self.wfile.write(json.dumps(res).encode("utf-8"))
+            return
+
         # API: データ読み込み
         if self.path.startswith("/api/data"):
             self.send_response(200)
@@ -80,6 +104,28 @@ class CustomLabelStudioHandler(http.server.SimpleHTTPRequestHandler):
 
             try:
                 payload = json.loads(post_body.decode("utf-8"))
+
+                # 巻き戻り防止ガード: 既存ファイルの方がクライアントのタイムスタンプより新しい場合の上書きを拒否
+                if os.path.exists(DATA_FILE) and not payload.get("force", False):
+                    try:
+                        current_mtime_ms = int(os.path.getmtime(DATA_FILE) * 1000)
+                        client_ms = int(payload.get("updatedAtMs", 0))
+                        # 既存ファイルが1.5秒以上新しい場合は巻き戻りと判定
+                        if client_ms > 0 and current_mtime_ms > client_ms + 1500:
+                            res = {
+                                "success": False,
+                                "conflict": True,
+                                "message": "リモートにさらに新しいデータが存在します（巻き戻りを防止しました）",
+                                "remoteUpdatedAtMs": current_mtime_ms
+                            }
+                            self.send_response(409)
+                            self.send_header("Content-Type", "application/json; charset=utf-8")
+                            self._set_cors_headers()
+                            self.end_headers()
+                            self.wfile.write(json.dumps(res, ensure_ascii=False).encode("utf-8"))
+                            return
+                    except Exception as e:
+                        print(f"[警告] タイムスタンプ検査中に例外: {e}")
 
                 # 既存データがあれば直前のバックアップを作成
                 if os.path.exists(DATA_FILE):

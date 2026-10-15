@@ -1116,8 +1116,9 @@
 
       // Dropbox自動同期の初期接続チェック
       pullDataFromServer(false);
+      startPollingSync();
 
-      // 他PCでの変更を検知（ブラウザタブがアクティブになった時に再チェック）
+      // 他PCでの変更を検知（ブラウザタブがアクティブになった時にも即再チェック）
       window.addEventListener('focus', () => {
         if (syncAvailable) {
           pullDataFromServer(false);
@@ -1131,12 +1132,18 @@
     const SYNC_API_URL = window.location.protocol === 'file:' 
       ? 'http://localhost:51467/api/data' 
       : '/api/data';
+    const SYNC_STATUS_URL = window.location.protocol === 'file:' 
+      ? 'http://localhost:51467/api/status' 
+      : '/api/status';
 
     let syncAvailable = false;
     let lastSyncedAt = null;
     let lastSyncedAtMs = 0;
     let saveDebounceTimer = null;
     let isPullingData = false;
+    let isPushingData = false;
+    let pollingInterval = null;
+    const POLLING_INTERVAL_MS = 3000; // 3秒ごとの超高速バックグラウンド監視
 
     /**
      * 同期ステータスUIの更新
@@ -1217,15 +1224,74 @@
     }
 
     /**
+     * リモートの履歴と手元の履歴を安全に合体マージ
+     * （どちらのPCで追加した履歴も絶対に消えずに合体されます）
+     */
+    function mergeHistory(incomingHistory) {
+      if (!Array.isArray(incomingHistory) || incomingHistory.length === 0) return false;
+      if (!Array.isArray(labelHistory)) labelHistory = [];
+
+      const combined = [...labelHistory, ...incomingHistory];
+      const map = new Map();
+
+      combined.forEach(item => {
+        if (!item) return;
+        const series = (item.series || '').trim();
+        const name = (item.name || '').trim();
+        const size = (item.size || '').trim();
+        const color = (item.color || '#10b981').toLowerCase();
+        if (!series && !name && !size) return;
+
+        const key = `${series}___${name}___${size}___${color}`;
+        const existing = map.get(key);
+        if (!existing || (item.timestamp || 0) > (existing.timestamp || 0)) {
+          map.set(key, item);
+        }
+      });
+
+      labelHistory = Array.from(map.values())
+        .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+        .slice(0, 50);
+      return true;
+    }
+
+    /**
+     * 3秒ごとの超軽量バックグラウンド自動同期ポーリング
+     * （他PCで保存された最新データを自動検知して画面を更新）
+     */
+    function startPollingSync() {
+      if (pollingInterval) clearInterval(pollingInterval);
+      pollingInterval = setInterval(async () => {
+        if (!syncAvailable || isPullingData || isPushingData) return;
+        try {
+          const res = await fetch(SYNC_STATUS_URL, {
+            headers: { 'Cache-Control': 'no-cache' }
+          });
+          if (!res.ok) return;
+          const st = await res.json();
+          if (st.exists && st.updatedAtMs) {
+            // リモートが手元より新しければ自動で最新データを取得・画面反映
+            if (st.updatedAtMs > lastSyncedAtMs) {
+              await pullDataFromServer(false);
+            }
+          }
+        } catch (e) {
+          // バックグラウンドポーリング失敗は静かにスルー
+        }
+      }, POLLING_INTERVAL_MS);
+    }
+
+    /**
      * サーバーへデータを自動同期保存 (POST)
      */
     async function pushDataToServer() {
-      if (!syncAvailable || isPullingData) return;
+      if (!syncAvailable || isPullingData || isPushingData) return;
+      isPushingData = true;
       try {
         updateSyncStatusUI('syncing', 'Dropbox保存中...');
         const nowMs = Date.now();
         const payload = {
-          version: '1.8.0',
+          version: '1.9.0',
           appName: 'カスタムラベルスタジオ',
           updatedAt: new Date(nowMs).toISOString(),
           updatedAtMs: nowMs,
@@ -1240,6 +1306,14 @@
           body: JSON.stringify(payload)
         });
 
+        // 409 Conflict: 他PCでより新しいデータが保存されていた場合、上書きせず最新を取り込んで復旧
+        if (res.status === 409) {
+          console.warn('他PCで新しい変更が行われたため、最新データを取得して統合します');
+          showToast('🔄', '他PCでの変更を検知したため最新に更新しました');
+          await pullDataFromServer(true);
+          return false;
+        }
+
         if (res.ok) {
           const result = await res.json();
           lastSyncedAtMs = result.updatedAtMs || result.savedAtMs || nowMs;
@@ -1247,26 +1321,34 @@
           const d = new Date(lastSyncedAtMs);
           const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
           updateSyncStatusUI('synced', `Dropbox同期済 (${timeStr})`, '全PCと自動同期されています。クリックで再同期確認');
+          return true;
         } else {
           updateSyncStatusUI('error', '保存エラー');
+          return false;
         }
       } catch (e) {
         console.warn('Dropbox自動保存失敗:', e);
         syncAvailable = false;
         updateSyncStatusUI('local', 'ローカル保存モード', '起動.bat で立ち上げるとDropbox自動同期が有効になります');
+        return false;
+      } finally {
+        isPushingData = false;
       }
     }
 
     /**
-     * 変更通知を受け取ってデバウンス保存
+     * 変更通知を受け取って保存（即時または400msデバウンス）
      */
-    function notifyDataChange() {
-      // サーバー未接続または受信処理中は無駄な再保存（Pushループ）を防止
+    function notifyDataChange(immediate = false) {
       if (!syncAvailable || isPullingData) return;
       clearTimeout(saveDebounceTimer);
-      saveDebounceTimer = setTimeout(() => {
+      if (immediate) {
         pushDataToServer();
-      }, 400); // 400ms デバウンス
+      } else {
+        saveDebounceTimer = setTimeout(() => {
+          pushDataToServer();
+        }, 400); // 400ms デバウンス
+      }
     }
 
     /**
@@ -1303,7 +1385,7 @@
             changed = true;
           }
           if (Array.isArray(imported.labelHistory)) {
-            labelHistory = imported.labelHistory;
+            mergeHistory(imported.labelHistory);
             changed = true;
           }
           if (imported.currentFormat && FORMAT_SPECS[imported.currentFormat]) {
@@ -2092,6 +2174,7 @@
         const count = idsToUpdate.length;
         deselectAndClear();
         render();
+        notifyDataChange(true);
         showToast('✨', count > 1 ? `${count}個の枠を一括保存しました` : 'ラベルを保存しました');
         return;
       }
@@ -2109,6 +2192,7 @@
         addLabelToHistory(newLabel);
         deselectAndClear();
         render();
+        notifyDataChange(true);
         showToast('✨', `枠 #${selectedEmptySlot + 1} に保存しました`);
         return;
       }
@@ -2135,6 +2219,7 @@
 
       deselectAndClear();
       render();
+      notifyDataChange(true);
       showToast('✨', `${qty}枚のラベルを保存しました`);
     }
 
@@ -2205,6 +2290,7 @@
 
       deselectAndClear();
       render();
+      notifyDataChange(true);
       showToast('🗑️', count > 1 ? `${count}個の枠を削除しました` : '枠を削除しました');
     }
 
@@ -2225,6 +2311,7 @@
         deselectAndClear();
       }
       render();
+      notifyDataChange(true);
     }
 
     /**
@@ -2239,6 +2326,7 @@
         labelData = [];
         deselectAndClear();
         render();
+        notifyDataChange(true);
         showToast('🗑️', 'すべて白紙に戻しました (Ctrl+Zで元に戻せます)');
       }
     }

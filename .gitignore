@@ -11,3 +11,11 @@ desktop.ini
 *.njsproj
 *.sln
 *.sw?
+
+# Python
+__pycache__/
+*.pyc
+
+# Local runtime data
+label_data.json
+label_data.*.json
