@@ -1791,27 +1791,38 @@
      */
     function initKeyboardShortcuts() {
       document.addEventListener('keydown', (e) => {
-        const isInputFocused = document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.isContentEditable);
+        const isInputFocused = document.activeElement && (
+          document.activeElement.tagName === 'INPUT' || 
+          document.activeElement.tagName === 'TEXTAREA' || 
+          document.activeElement.isContentEditable
+        );
+
+        // 入力欄内でテキストが明示的に範囲選択されているか判定
+        const hasTextSelection = isInputFocused && (
+          (typeof document.activeElement.selectionStart === 'number' && 
+           document.activeElement.selectionStart !== document.activeElement.selectionEnd) ||
+          (window.getSelection() && window.getSelection().toString().length > 0)
+        );
 
         // Ctrl+Z (一つ前の処理に戻す / 元に戻す)
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
-          if (isInputFocused) return; // 入力欄フォーカス中はブラウザネイティブのテキストUndoを優先
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z' || e.code === 'KeyZ') && !e.shiftKey) {
+          if (isInputFocused) return;
           e.preventDefault();
           undo();
           return;
         }
 
         // Ctrl+Y または Ctrl+Shift+Z (やり直す / Redo)
-        if (((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) ||
-            ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z'))) {
-          if (isInputFocused) return; // 入力欄フォーカス中はブラウザネイティブのテキストRedoを優先
+        if (((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y' || e.code === 'KeyY')) ||
+            ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z' || e.code === 'KeyZ'))) {
+          if (isInputFocused) return;
           e.preventDefault();
           redo();
           return;
         }
 
         // Ctrl+A (すべての枠を一括選択)
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A' || e.code === 'KeyA')) {
           if (isInputFocused) return;
           e.preventDefault();
           selectAllLabels();
@@ -1819,37 +1830,50 @@
         }
 
         // Ctrl+C (コピー)
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
-          if (isInputFocused) return;
+        const isCtrlC = (e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C' || e.code === 'KeyC');
+        if (isCtrlC) {
+          // 入力欄で文字が明示的にドラッグ範囲選択されている場合は、ブラウザのテキストコピーを優先
+          if (hasTextSelection) return;
+
+          // シート上の枠が選択されている場合は、枠のコピーを最優先実行！
           if (selectedLabelId || selectedLabelIds.length > 0) {
             e.preventDefault();
+            if (isInputFocused && document.activeElement) document.activeElement.blur();
             copySelectedLabel();
+            return;
           }
         }
 
         // Ctrl+V (ペースト)
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
-          if (isInputFocused) return;
-          if (internalClipboard) {
+        const isCtrlV = (e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V' || e.code === 'KeyV');
+        if (isCtrlV) {
+          // クリップボードに枠データがあり、入力欄テキスト編集中でないか、枠・白紙枠が選択されている場合
+          if (internalClipboard && (!isInputFocused || selectedLabelId || selectedLabelIds.length > 0 || selectedEmptySlot !== null)) {
             e.preventDefault();
+            if (isInputFocused && document.activeElement) document.activeElement.blur();
             pasteClipboardLabel();
+            return;
           }
         }
 
         // Ctrl+D (その場で複製)
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
-          if (isInputFocused) return;
+        const isCtrlD = (e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D' || e.code === 'KeyD');
+        if (isCtrlD) {
           if (selectedLabelId || selectedLabelIds.length > 0) {
             e.preventDefault();
+            if (isInputFocused && document.activeElement) document.activeElement.blur();
             duplicateSelectedLabel();
+            return;
           }
         }
 
         // Delete または Backspace (選択中の枠を削除)
-        if ((e.key === 'Delete' || e.key === 'Backspace') && !isInputFocused) {
+        const isDeleteKey = e.key === 'Delete' || e.key === 'Backspace' || e.code === 'Delete' || e.code === 'Backspace';
+        if (isDeleteKey && !isInputFocused) {
           if (selectedLabelId || selectedLabelIds.length > 0) {
             e.preventDefault();
             removeSelectedLabel();
+            return;
           }
         }
       });
@@ -1907,6 +1931,10 @@
 
       const clipList = Array.isArray(internalClipboard) ? internalClipboard : [internalClipboard];
       const newIds = [];
+      const maxSlots = FORMAT_SPECS[currentFormat]?.total || (currentFormat === '10' ? 10 : 44);
+
+      // 指定された白紙枠があればそこを開始位置にする
+      let startSlot = selectedEmptySlot !== null ? selectedEmptySlot : 0;
 
       clipList.forEach(data => {
         const newLabel = {
@@ -1917,15 +1945,26 @@
           color: data.color || '#10b981'
         };
 
-        let targetSlot = 0;
-        while (labelData[targetSlot]) {
+        let targetSlot = startSlot;
+        while (targetSlot < maxSlots && labelData[targetSlot]) {
           targetSlot++;
         }
-        labelData[targetSlot] = newLabel;
-        newIds.push(newLabel.id);
+        if (targetSlot < maxSlots) {
+          labelData[targetSlot] = newLabel;
+          newIds.push(newLabel.id);
+          startSlot = targetSlot + 1;
+        }
       });
 
+      if (newIds.length === 0) {
+        showToast('⚠️', 'シートに空き枠がありません');
+        return;
+      }
+
+      deselectAndClear();
       render();
+      notifyDataChange(true); // 即時同期！
+
       if (newIds.length === 1) {
         selectExistingLabel(newIds[0], false);
       } else {
@@ -1947,6 +1986,9 @@
      * isMultiSelect: true の場合は Ctrl/Cmd+クリックによる複数選択・トグル切り替え
      */
     function selectExistingLabel(id, isMultiSelect = false) {
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
       selectedEmptySlot = null;
 
       if (isMultiSelect) {
@@ -2020,6 +2062,9 @@
      * 【白紙の場所をクリックした時】
      */
     function selectEmptySlot(slotIndex) {
+      if (document.activeElement && typeof document.activeElement.blur === 'function') {
+        document.activeElement.blur();
+      }
       selectedLabelId = null;
       selectedLabelIds = [];
       selectedEmptySlot = slotIndex;
